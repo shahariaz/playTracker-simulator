@@ -1,7 +1,6 @@
 package loader
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -430,7 +429,13 @@ func (c *HarborAPIClient) sendRequest(url string, body []byte) error {
 
 		err := c.client.Do(req, resp)
 		statusCode := resp.StatusCode()
-		responseBody := bytes.Clone(resp.Body())
+
+		// Only copy response body when needed for error reporting
+		var responseBody []byte
+		if statusCode >= 400 {
+			responseBody = make([]byte, len(resp.Body()))
+			copy(responseBody, resp.Body())
+		}
 
 		fasthttp.ReleaseRequest(req)
 		fasthttp.ReleaseResponse(resp)

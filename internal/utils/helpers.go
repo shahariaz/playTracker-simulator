@@ -11,17 +11,29 @@ import (
 )
 
 // RandomInt returns a random integer between min and max (inclusive)
+// Uses crypto/rand for secure random number generation.
+// Falls back to deterministic behavior if crypto/rand fails (which is extremely rare).
 func RandomInt(min, max int) int {
 	if min >= max {
 		return min
 	}
-	n, _ := rand.Int(rand.Reader, big.NewInt(int64(max-min+1)))
+	n, err := rand.Int(rand.Reader, big.NewInt(int64(max-min+1)))
+	if err != nil {
+		// Fallback to min value if crypto/rand fails (extremely rare)
+		return min
+	}
 	return int(n.Int64()) + min
 }
 
 // RandomFloat returns a random float between 0 and 1
+// Uses crypto/rand for secure random number generation.
+// Falls back to 0.5 if crypto/rand fails (which is extremely rare).
 func RandomFloat() float64 {
-	n, _ := rand.Int(rand.Reader, big.NewInt(1000000))
+	n, err := rand.Int(rand.Reader, big.NewInt(1000000))
+	if err != nil {
+		// Fallback to mid-range value if crypto/rand fails (extremely rare)
+		return 0.5
+	}
 	return float64(n.Int64()) / 1000000.0
 }
 
@@ -44,9 +56,15 @@ func WeightedRandomSelect(weights []float64) int {
 }
 
 // RandomDateBetween generates a random date between start and end
+// Uses crypto/rand for secure random number generation.
+// Falls back to start date if crypto/rand fails (which is extremely rare).
 func RandomDateBetween(start, end time.Time) time.Time {
 	delta := end.Sub(start)
-	n, _ := rand.Int(rand.Reader, big.NewInt(int64(delta)))
+	n, err := rand.Int(rand.Reader, big.NewInt(int64(delta)))
+	if err != nil {
+		// Fallback to start date if crypto/rand fails (extremely rare)
+		return start
+	}
 	return start.Add(time.Duration(n.Int64()))
 }
 
