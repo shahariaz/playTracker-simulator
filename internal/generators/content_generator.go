@@ -78,19 +78,24 @@ func (g *ContentGenerator) generateMovie(contentID uint64) models.ContentItem {
 	releaseDate := fmt.Sprintf("%d-%02d-%02d", releaseYear, utils.RandomInt(1, 12), utils.RandomInt(1, 28))
 
 	// Movie duration: 75-180 minutes (in seconds)
-	duration := int64(utils.RandomInt(75, 180) * 60)
+	duration := uint64(utils.RandomInt(75, 180) * 60)
+
+	metas := g.generateMetasArray()
+	ageRating := uint8(utils.RandomInt(0, 18))
 
 	return models.ContentItem{
-		ContentAccess: g.randomContentAccess(),
 		ContentID:     strconv.FormatUint(contentID, 10),
-		Duration:      duration,
-		Genres:        strings.Join(genres, ","),
-		Language:      g.randomLanguage(),
-		Metas:         g.generateMetas(),
-		PublishDate:   releaseDate,
-		ReleaseDate:   releaseDate,
 		Title:         g.generateMovieTitle(),
 		Type:          models.ContentTypeMovie,
+		ContentType:   models.ContentTypeMovie,
+		Language:      g.randomLanguage(),
+		AgeRating:     ageRating,
+		ContentAccess: g.randomContentAccess(),
+		PublishDate:   releaseDate,
+		ReleaseDate:   releaseDate,
+		Duration:      duration,
+		Metas:         metas,
+		Genres:        genres,
 	}
 }
 
@@ -98,10 +103,10 @@ func (g *ContentGenerator) generateMovie(contentID uint64) models.ContentItem {
 func (g *ContentGenerator) generateSeries(seriesID uint64, episodeID *uint64) (models.SeriesItem, []models.SeriesItem) {
 	seriesTitle := g.generateSeriesTitle()
 	genres := g.randomGenres(utils.RandomInt(1, 3))
-	genresStr := strings.Join(genres, ",")
 	language := g.randomLanguage()
 	contentAccess := g.randomContentAccess()
-	metas := g.generateMetas()
+	metas := g.generateMetasArray()
+	ageRating := uint8(utils.RandomInt(0, 18))
 
 	numSeasons := utils.RandomInt(g.config.Content.Series.SeasonsPerSeriesMin, g.config.Content.Series.SeasonsPerSeriesMax)
 	totalEpisodes := utils.RandomInt(g.config.Content.Series.EpisodesPerSeriesMin, g.config.Content.Series.EpisodesPerSeriesMax)
@@ -110,16 +115,19 @@ func (g *ContentGenerator) generateSeries(seriesID uint64, episodeID *uint64) (m
 	// Series item
 	series := models.SeriesItem{
 		ContentItem: models.ContentItem{
-			ContentAccess: contentAccess,
 			ContentID:     strconv.FormatUint(seriesID, 10),
-			Duration:      0, // Series don't have duration directly
-			Genres:        genresStr,
-			Language:      language,
-			Metas:         metas,
-			PublishDate:   fmt.Sprintf("%d-01-01", utils.RandomInt(2015, 2024)),
-			ReleaseDate:   fmt.Sprintf("%d-01-01", utils.RandomInt(2015, 2024)),
+			SeriesID:      strconv.FormatUint(seriesID, 10),
 			Title:         seriesTitle,
 			Type:          models.ContentTypeSeries,
+			ContentType:   models.ContentTypeSeries,
+			Language:      language,
+			AgeRating:     ageRating,
+			ContentAccess: contentAccess,
+			PublishDate:   fmt.Sprintf("%d-01-01", utils.RandomInt(2015, 2024)),
+			ReleaseDate:   fmt.Sprintf("%d-01-01", utils.RandomInt(2015, 2024)),
+			Duration:      0, // Series don't have duration directly
+			Metas:         metas,
+			Genres:        genres,
 		},
 		SeriesID:    seriesID,
 		SeriesTitle: seriesTitle,
@@ -137,20 +145,25 @@ func (g *ContentGenerator) generateSeries(seriesID uint64, episodeID *uint64) (m
 
 		for ep := 1; ep <= seasonEpisodes && episodeCount < totalEpisodes; ep++ {
 			// Episode duration: 20-65 minutes (in seconds)
-			duration := int64(utils.RandomInt(20, 65) * 60)
+			duration := uint64(utils.RandomInt(20, 65) * 60)
 
 			episode := models.SeriesItem{
 				ContentItem: models.ContentItem{
-					ContentAccess: contentAccess,
 					ContentID:     strconv.FormatUint(*episodeID, 10),
-					Duration:      duration,
-					Genres:        genresStr,
-					Language:      language,
-					Metas:         metas,
-					PublishDate:   fmt.Sprintf("%d-%02d-%02d", utils.RandomInt(2015, 2024), utils.RandomInt(1, 12), utils.RandomInt(1, 28)),
-					ReleaseDate:   fmt.Sprintf("%d-%02d-%02d", utils.RandomInt(2015, 2024), utils.RandomInt(1, 12), utils.RandomInt(1, 28)),
+					SeriesID:      strconv.FormatUint(seriesID, 10),
+					SeasonID:      strconv.Itoa(season),
+					EpisodeNumber: uint64(ep),
 					Title:         fmt.Sprintf("%s S%02dE%02d", seriesTitle, season, ep),
 					Type:          models.ContentTypeEpisode,
+					ContentType:   models.ContentTypeEpisode,
+					Language:      language,
+					AgeRating:     ageRating,
+					ContentAccess: contentAccess,
+					PublishDate:   fmt.Sprintf("%d-%02d-%02d", utils.RandomInt(2015, 2024), utils.RandomInt(1, 12), utils.RandomInt(1, 28)),
+					ReleaseDate:   fmt.Sprintf("%d-%02d-%02d", utils.RandomInt(2015, 2024), utils.RandomInt(1, 12), utils.RandomInt(1, 28)),
+					Duration:      duration,
+					Metas:         metas,
+					Genres:        genres,
 				},
 				SeriesID:    seriesID,
 				SeasonNum:   season,
@@ -222,7 +235,7 @@ func (g *ContentGenerator) randomContentAccess() string {
 	return accessTypes[utils.WeightedRandomSelect(weights)]
 }
 
-// generateMetas generates random metadata
+// generateMetas generates random metadata (legacy - returns string)
 func (g *ContentGenerator) generateMetas() string {
 	metas := []string{}
 
@@ -244,6 +257,30 @@ func (g *ContentGenerator) generateMetas() string {
 	metas = append(metas, fmt.Sprintf("rating:%s", ratings[utils.RandomInt(0, len(ratings)-1)]))
 
 	return strings.Join(metas, ";")
+}
+
+// generateMetasArray generates random metadata as array
+func (g *ContentGenerator) generateMetasArray() []string {
+	metas := []string{}
+
+	// Add directors
+	metas = append(metas, fmt.Sprintf("director:%s", g.faker.Name()))
+
+	// Add cast members
+	castCount := utils.RandomInt(2, 5)
+	for i := 0; i < castCount; i++ {
+		metas = append(metas, fmt.Sprintf("cast:%s", g.faker.Name()))
+	}
+
+	// Add provider
+	providers := []string{"Netflix", "Amazon", "Hulu", "Disney+", "HBO Max", "Apple TV+", "Paramount+"}
+	metas = append(metas, fmt.Sprintf("provider:%s", providers[utils.RandomInt(0, len(providers)-1)]))
+
+	// Add rating
+	ratings := []string{"G", "PG", "PG-13", "R", "NC-17", "TV-MA", "TV-14", "TV-PG"}
+	metas = append(metas, fmt.Sprintf("rating:%s", ratings[utils.RandomInt(0, len(ratings)-1)]))
+
+	return metas
 }
 
 // SaveContent saves generated content to files

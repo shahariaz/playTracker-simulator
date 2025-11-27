@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -80,21 +81,61 @@ func (g *WatchHistoryGenerator) GenerateWatchHistoryForBatch(batchNumber int, us
 		return fmt.Errorf("failed to load user batch %d: %w", batchNumber, err)
 	}
 
-	fmt.Printf("Generating watch history for batch %d (%d users)...\n", batchNumber, len(userBatch.Users))
+	fmt.Printf("\nBatch %d: Generating watch history for %s users (concurrent processing)...\n",
+		batchNumber, utils.FormatNumber(int64(len(userBatch.Users))))
 
-	bar := progressbar.NewOptions(len(userBatch.Users),
+	// Concurrent user processing
+	userCount := len(userBatch.Users)
+	workerCount := 50 // Number of concurrent workers per batch
+	if userCount < workerCount {
+		workerCount = userCount
+	}
+
+	// Channels for work distribution
+	userChan := make(chan models.User, userCount)
+	resultChan := make(chan []models.WatchHistory, userCount)
+	var wg sync.WaitGroup
+
+	// Progress bar
+	bar := progressbar.NewOptions(userCount,
 		progressbar.OptionSetDescription(fmt.Sprintf("Batch %d", batchNumber)),
 		progressbar.OptionShowCount(),
 		progressbar.OptionShowIts(),
+		progressbar.OptionSetWidth(50),
 	)
 
-	allWatchHistory := make([]models.WatchHistory, 0)
+	// Start workers
+	for i := 0; i < workerCount; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
 
-	for _, user := range userBatch.Users {
-		watchHistory := g.generateWatchHistoryForUser(user)
-		allWatchHistory = append(allWatchHistory, watchHistory...)
-		bar.Add(1)
+			for user := range userChan {
+				watchHistory := g.generateWatchHistoryForUser(user)
+				resultChan <- watchHistory
+				bar.Add(1)
+			}
+		}()
 	}
+
+	// Send users to workers
+	for _, user := range userBatch.Users {
+		userChan <- user
+	}
+	close(userChan)
+
+	// Wait for all workers in a separate goroutine
+	go func() {
+		wg.Wait()
+		close(resultChan)
+	}()
+
+	// Collect results
+	allWatchHistory := make([]models.WatchHistory, 0)
+	for watchHistory := range resultChan {
+		allWatchHistory = append(allWatchHistory, watchHistory...)
+	}
+
 	fmt.Println()
 
 	// Save watch history
@@ -103,7 +144,8 @@ func (g *WatchHistoryGenerator) GenerateWatchHistoryForBatch(batchNumber int, us
 		return fmt.Errorf("failed to save watch history batch %d: %w", batchNumber, err)
 	}
 
-	fmt.Printf("Saved %s watch events to %s\n", utils.FormatNumber(int64(len(allWatchHistory))), outputPath)
+	fmt.Printf("✓ Batch %d: Saved %s watch events to watch_history_batch_%06d.json\n",
+		batchNumber, utils.FormatNumber(int64(len(allWatchHistory))), batchNumber)
 	return nil
 }
 
@@ -183,44 +225,58 @@ func (g *WatchHistoryGenerator) generateWatchHistoryForUser(user models.User) []
 		completionRate := g.generateCompletionRate()
 
 		// Calculate watch duration
-		contentDuration := uint64(content.Duration)
+		contentDuration := content.Duration
 		watchDuration := utils.CalculateWatchDuration(contentDuration, completionRate)
 		watchStatus := utils.DetermineWatchStatus(completionRate)
 
 		// Parse genres and metas
-		genres := strings.Split(content.Genres, ",")
-		metas := strings.Split(content.Metas, ";")
+		genres := content.Genres
+		metas := content.Metas
 		casts := g.extractCasts(metas)
 		providerName := g.extractProvider(metas)
+
+		// Helper function to convert string to pointer
+		strPtr := func(s string) *string {
+			if s == "" {
+				return nil
+			}
+			return &s
+		}
+
+		// Convert user IDs to strings
+		customerID := strconv.FormatUint(user.CustomerID, 10)
+		profileID := strconv.FormatUint(user.ProfileID, 10)
+		deviceID := strconv.FormatUint(user.DeviceID, 10)
 
 		// Create watch history record
 		watchRecord := models.WatchHistory{
 			UUID:             uuid.New().String(),
-			CustomerID:       user.CustomerID,
-			ProfileID:        user.ProfileID,
-			DOB:              user.DOB,
-			Gender:           user.Gender,
-			SubscriptionType: user.SubscriptionType,
+			CustomerID:       customerID,
+			ProfileID:        profileID,
+			DOB:              strPtr(user.DOB),
+			Gender:           strPtr(user.Gender),
+			SubscriptionType: strPtr(user.SubscriptionType),
 
-			ContentID:       contentID,
+			ContentID:       content.ContentID,
+			SeriesID:        strPtr(content.SeriesID),
 			ContentType:     contentType,
 			ContentDuration: contentDuration,
 			Genres:          genres,
 			Casts:           casts,
 			Metas:           metas,
-			ProviderName:    providerName,
-			Language:        content.Language,
-			ReleaseYear:     releaseYear,
+			ProviderName:    strPtr(providerName),
+			Language:        strPtr(content.Language),
+			ReleaseYear:     strPtr(releaseYear),
 
-			WatchStatus:   watchStatus,
+			WatchStatus:   strPtr(watchStatus),
 			WatchDuration: watchDuration,
 			WatchedAt:     watchTime,
 
-			City:       user.City,
-			Country:    user.Country,
-			IPAddress:  utils.GenerateIPAddress(),
-			DeviceID:   user.DeviceID,
-			DeviceType: user.DeviceType,
+			City:       strPtr(user.City),
+			Country:    strPtr(user.Country),
+			IPAddress:  strPtr(utils.GenerateIPAddress()),
+			DeviceID:   strPtr(deviceID),
+			DeviceType: strPtr(user.DeviceType),
 			CreatedAt:  watchTime,
 			UpdatedAt:  watchTime,
 		}
@@ -240,8 +296,7 @@ func (g *WatchHistoryGenerator) selectContent(user models.User, watched map[stri
 		for _, movie := range g.movies {
 			if !watched[movie.ContentID] {
 				// Check genre preference
-				movieGenres := strings.Split(movie.Genres, ",")
-				if g.matchesGenrePreference(movieGenres, user.GenrePreferences) {
+				if g.matchesGenrePreference(movie.Genres, user.GenrePreferences) {
 					candidates = append(candidates, movie)
 					id, _ := strconv.ParseUint(movie.ContentID, 10, 64)
 					candidateIDs = append(candidateIDs, id)
@@ -252,8 +307,7 @@ func (g *WatchHistoryGenerator) selectContent(user models.User, watched map[stri
 		for _, episode := range g.episodes {
 			if !watched[episode.ContentID] {
 				// Check genre preference
-				episodeGenres := strings.Split(episode.Genres, ",")
-				if g.matchesGenrePreference(episodeGenres, user.GenrePreferences) {
+				if g.matchesGenrePreference(episode.Genres, user.GenrePreferences) {
 					candidates = append(candidates, episode.ContentItem)
 					id, _ := strconv.ParseUint(episode.ContentID, 10, 64)
 					candidateIDs = append(candidateIDs, id)
@@ -413,12 +467,66 @@ func (g *WatchHistoryGenerator) extractProvider(metas []string) string {
 	return "Unknown"
 }
 
-// GenerateWatchHistoryForBatches generates watch history for a range of batches
+// GenerateWatchHistoryForBatches generates watch history for a range of batches using concurrent workers
 func (g *WatchHistoryGenerator) GenerateWatchHistoryForBatches(startBatch, endBatch int, usersDir, outputDir string) error {
+	totalBatches := endBatch - startBatch + 1
+	fmt.Printf("\n=== Generating Watch History for %d Batches (Concurrent Processing) ===\n", totalBatches)
+
+	// Create a worker pool
+	workerCount := 10 // Number of concurrent workers
+	if totalBatches < workerCount {
+		workerCount = totalBatches
+	}
+
+	// Create channels
+	batchChan := make(chan int, totalBatches)
+	errorChan := make(chan error, totalBatches)
+	var wg sync.WaitGroup
+
+	// Progress tracking
+	var processedBatches int64
+	var mu sync.Mutex
+
+	// Start workers
+	for i := 0; i < workerCount; i++ {
+		wg.Add(1)
+		go func(workerID int) {
+			defer wg.Done()
+
+			for batchNumber := range batchChan {
+				// Generate watch history for this batch
+				if err := g.GenerateWatchHistoryForBatch(batchNumber, usersDir, outputDir); err != nil {
+					errorChan <- fmt.Errorf("worker %d failed on batch %d: %w", workerID, batchNumber, err)
+					return
+				}
+
+				// Update progress
+				mu.Lock()
+				processedBatches++
+				fmt.Printf("Progress: %d/%d batches completed (%.1f%% done)\n",
+					processedBatches, totalBatches, float64(processedBatches)/float64(totalBatches)*100)
+				mu.Unlock()
+			}
+		}(i)
+	}
+
+	// Send batch numbers to workers
 	for batch := startBatch; batch <= endBatch; batch++ {
-		if err := g.GenerateWatchHistoryForBatch(batch, usersDir, outputDir); err != nil {
+		batchChan <- batch
+	}
+	close(batchChan)
+
+	// Wait for all workers to finish
+	wg.Wait()
+	close(errorChan)
+
+	// Check for errors
+	for err := range errorChan {
+		if err != nil {
 			return err
 		}
 	}
+
+	fmt.Printf("\n✓ Successfully generated watch history for all %d batches\n", totalBatches)
 	return nil
 }

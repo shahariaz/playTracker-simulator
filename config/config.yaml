@@ -13,7 +13,7 @@ content:
     count: 10000
 
 users:
-  total_count: 30000000
+  total_count: 30
   batch_size: 100000
   
   distribution:
@@ -65,6 +65,16 @@ api:
   batch_size: 500
   rate_limit_per_second: 100
   timeout_seconds: 30
+
+rabbitmq:
+  user: "admin"
+  password: "admin123"
+  host: "localhost"
+  port: 5672
+  vhost: "/"
+  watch_history_queue: "watchhi-story"
+  content_item_queue: "content_item"
+  series_item_queue: "series_item"
 
 output:
   content_dir: "data/content"

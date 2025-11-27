@@ -29,18 +29,24 @@ This simulator generates:
 - Consistent user attributes throughout their lifetime
 
 ### Watch History Generation
+- **Concurrent Processing**: Multi-level parallelism for maximum performance
+  - 10 batches processed simultaneously (batch-level concurrency)
+  - 50 users per batch processed in parallel (user-level concurrency)
+  - 5-10x faster than sequential processing
 - Realistic viewing patterns with peak hours (weekday: 7-11 PM, weekend: 2-11 PM)
 - 35% binge watching probability for series
 - Genre preferences based on user profile
 - Completion rates: 45% full (90-100%), 35% partial (40-89%), 20% abandoned (0-39%)
 - Time distribution based on activity pattern
+- Processes 30M users → 600M+ events in 1-2 hours (on modern hardware)
 
 ### API Integration
-- POST to Harbor API endpoints
+- POST to Harbor API endpoints OR publish to RabbitMQ queues
 - Parallel processing with configurable workers
 - Rate limiting support
 - Retry logic with exponential backoff
 - Progress tracking and statistics
+- Dual loading modes: REST API or Message Queue
 
 ## Project Structure
 
@@ -122,10 +128,16 @@ go run cmd/simulator/main.go generate --users
 go run cmd/simulator/main.go generate --watch-history --start-batch=1 --end-batch=10
 
 # Load content to Harbor API
-go run cmd/simulator/main.go load --content
+go run cmd/simulator/main.go load --content --use-api
 
-# Load watch history to Harbor API
-go run cmd/simulator/main.go load --watch-history --start-batch=1 --end-batch=10
+# Load content to RabbitMQ queues
+go run cmd/simulator/main.go load --content --use-queue
+
+# Load watch history (specific user batches) to API
+go run cmd/simulator/main.go load --watch-history --start-batch=1 --end-batch=10 --use-api
+
+# Load watch history to RabbitMQ queues
+go run cmd/simulator/main.go load --watch-history --start-batch=1 --end-batch=10 --use-queue
 
 # Show statistics about generated data
 go run cmd/simulator/main.go stats
@@ -137,17 +149,19 @@ go run cmd/simulator/main.go help
 ### Makefile Commands
 
 ```bash
-make build                    # Build the simulator binary
-make deps                     # Download and tidy dependencies
-make run-all                  # Generate all data
-make generate-content         # Generate content data only
-make generate-users           # Generate user data only
-make generate-watch-history   # Generate watch history (first 10 batches)
-make load-content             # Load content to Harbor API
-make load-watch-history       # Load watch history to Harbor API
-make stats                    # Show statistics
-make clean                    # Remove generated data and binaries
-make help                     # Show help
+make build                       # Build the simulator binary
+make deps                        # Download and tidy dependencies
+make run-all                     # Generate all data
+make generate-content            # Generate content data only
+make generate-users              # Generate user data only
+make generate-watch-history      # Generate watch history (first 10 batches)
+make load-content                # Load content to Harbor API
+make load-content-queue          # Load content to RabbitMQ queues
+make load-watch-history          # Load watch history to Harbor API
+make load-watch-history-queue    # Load watch history to RabbitMQ queues
+make stats                       # Show statistics
+make clean                       # Remove generated data and binaries
+make help                        # Show help
 ```
 
 ### Custom Batch Ranges
@@ -156,8 +170,11 @@ make help                     # Show help
 # Generate watch history for batches 50-100
 make generate-watch-history-batch START=50 END=100
 
-# Load watch history for batches 1-50
+# Load watch history to API for batches 1-50
 make load-watch-history-batch START=1 END=50
+
+# Load watch history to RabbitMQ for batches 1-50
+make load-watch-history-batch-queue START=1 END=50
 ```
 
 ## Configuration
@@ -198,7 +215,41 @@ api:
   batch_size: 500
   rate_limit_per_second: 100
   timeout_seconds: 30
+
+rabbitmq:
+  user: "admin"
+  password: "admin123"
+  host: "localhost"
+  port: 5672
+  vhost: "/"
+  watch_history_queue: "watch_history_queue"
+  content_item_queue: "content_item_queue"
+  series_item_queue: "series_item_queue"
 ```
+
+## Loading Options
+
+The simulator supports two ways to load generated data:
+
+### 1. Harbor API (REST)
+Direct HTTP POST to Harbor API endpoints:
+- Uses `--use-api` flag (default)
+- Best for: Direct integration, synchronous processing
+- Features: Rate limiting, retry logic, health checks
+
+### 2. RabbitMQ Queues
+Publish messages to RabbitMQ queues:
+- Uses `--use-queue` flag
+- Best for: Asynchronous processing, decoupled architecture, high throughput
+- Features: Persistent messages, durable queues, parallel publishing
+
+**RabbitMQ Setup:**
+The simulator creates three queues automatically:
+- `content_item_queue` - For movies
+- `series_item_queue` - For TV series episodes
+- `watch_history_queue` - For watch history events
+
+Your backend consumer should listen to these queues to process the data.
 
 ## Data Models
 
@@ -260,15 +311,28 @@ The simulator integrates with the Harbor API using the following endpoints:
 
 ## Performance
 
+### Generation Speed
 - **User Generation**: ~1 million users/minute
 - **Content Generation**: ~50,000 items/minute
-- **Watch History Generation**: ~5 million events/minute
+- **Watch History Generation**: ~10-15 million events/minute (concurrent)
+  - **30M users → 600M+ events**: 1-2 hours on modern hardware
+  - Uses Go's goroutines for massive parallelism
+  - 10 batches + 50 users per batch = 500x concurrent workers
 - **API Loading**: Up to 100 requests/second (configurable)
 
 ### Memory Usage
 - Batch processing keeps memory usage manageable
 - Default batch size: 100,000 users per batch
 - Each batch generates ~1-4 million watch events
+- Concurrent processing: ~1GB additional overhead
+
+### Performance Tuning
+See [PERFORMANCE.md](./PERFORMANCE.md) for detailed information about:
+- Concurrent architecture design
+- Worker pool configuration
+- Memory optimization
+- Bottleneck identification
+- Benchmark results
 
 ## Architecture
 

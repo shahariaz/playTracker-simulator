@@ -14,6 +14,7 @@ type Config struct {
 	Users      UsersConfig      `yaml:"users"`
 	Genres     []string         `yaml:"genres"`
 	API        APIConfig        `yaml:"api"`
+	RabbitMQ   RabbitMQConfig   `yaml:"rabbitmq"`
 	Output     OutputConfig     `yaml:"output"`
 }
 
@@ -45,11 +46,11 @@ type MoviesConfig struct {
 
 // UsersConfig holds user generation settings
 type UsersConfig struct {
-	TotalCount       int                  `yaml:"total_count"`
-	BatchSize        int                  `yaml:"batch_size"`
-	Distribution     DistributionConfig   `yaml:"distribution"`
+	TotalCount       int                    `yaml:"total_count"`
+	BatchSize        int                    `yaml:"batch_size"`
+	Distribution     DistributionConfig     `yaml:"distribution"`
 	ActivityPatterns ActivityPatternsConfig `yaml:"activity_patterns"`
-	Demographics     DemographicsConfig   `yaml:"demographics"`
+	Demographics     DemographicsConfig     `yaml:"demographics"`
 }
 
 // DistributionConfig holds user tier distribution
@@ -93,6 +94,18 @@ type OutputConfig struct {
 	ContentDir      string `yaml:"content_dir"`
 	UsersDir        string `yaml:"users_dir"`
 	WatchHistoryDir string `yaml:"watch_history_dir"`
+}
+
+// RabbitMQConfig holds RabbitMQ configuration
+type RabbitMQConfig struct {
+	User              string `yaml:"user"`
+	Password          string `yaml:"password"`
+	Host              string `yaml:"host"`
+	Port              int    `yaml:"port"`
+	VHost             string `yaml:"vhost"`
+	WatchHistoryQueue string `yaml:"watch_history_queue"`
+	ContentItemQueue  string `yaml:"content_item_queue"`
+	SeriesItemQueue   string `yaml:"series_item_queue"`
 }
 
 // LoadConfig loads configuration from a YAML file
@@ -167,6 +180,16 @@ func GetDefaultConfig() *Config {
 			BatchSize:          500,
 			RateLimitPerSecond: 100,
 			TimeoutSeconds:     30,
+		},
+		RabbitMQ: RabbitMQConfig{
+			User:              "admin",
+			Password:          "admin123",
+			Host:              "localhost",
+			Port:              5672,
+			VHost:             "/",
+			WatchHistoryQueue: "watch_history_queue",
+			ContentItemQueue:  "content_item_queue",
+			SeriesItemQueue:   "series_item_queue",
 		},
 		Output: OutputConfig{
 			ContentDir:      "data/content",

@@ -5,6 +5,7 @@ go 1.21
 require (
 	github.com/brianvoe/gofakeit/v6 v6.28.0
 	github.com/google/uuid v1.5.0
+	github.com/rabbitmq/amqp091-go v1.10.0
 	github.com/schollz/progressbar/v3 v3.14.1
 	github.com/valyala/fasthttp v1.51.0
 	golang.org/x/sync v0.5.0

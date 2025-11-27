@@ -11,6 +11,7 @@ import (
 	"github.com/shahariaz/playtracker-simulator/internal/generators"
 	"github.com/shahariaz/playtracker-simulator/internal/loader"
 	"github.com/shahariaz/playtracker-simulator/internal/models"
+	"github.com/shahariaz/playtracker-simulator/internal/queue"
 	"github.com/shahariaz/playtracker-simulator/internal/utils"
 )
 
@@ -59,10 +60,12 @@ Generate Options:
   --config          Path to config file (default: config/config.yaml)
 
 Load Options:
-  --content         Load content to Harbor API
-  --watch-history   Load watch history to Harbor API
+  --content         Load content to Harbor API or RabbitMQ
+  --watch-history   Load watch history to Harbor API or RabbitMQ
   --start-batch     Start batch number (for watch history)
   --end-batch       End batch number (for watch history)
+  --use-queue       Use RabbitMQ queues instead of API
+  --use-api         Use Harbor API (default)
   --config          Path to config file (default: config/config.yaml)
 
 Examples:
@@ -70,8 +73,9 @@ Examples:
   simulator generate --content
   simulator generate --users
   simulator generate --watch-history --start-batch=1 --end-batch=10
-  simulator load --content
-  simulator load --watch-history --start-batch=1 --end-batch=10
+  simulator load --content --use-api
+  simulator load --content --use-queue
+  simulator load --watch-history --start-batch=1 --end-batch=10 --use-queue
   simulator stats`)
 }
 
@@ -116,10 +120,12 @@ func handleGenerate(args []string) {
 
 func handleLoad(args []string) {
 	fs := flag.NewFlagSet("load", flag.ExitOnError)
-	content := fs.Bool("content", false, "Load content to API")
-	watchHistory := fs.Bool("watch-history", false, "Load watch history to API")
+	content := fs.Bool("content", false, "Load content to API or Queue")
+	watchHistory := fs.Bool("watch-history", false, "Load watch history to API or Queue")
 	startBatch := fs.Int("start-batch", 1, "Start batch number")
 	endBatch := fs.Int("end-batch", 1, "End batch number")
+	useQueue := fs.Bool("use-queue", false, "Use RabbitMQ queues")
+	useAPI := fs.Bool("use-api", false, "Use Harbor API")
 	configPath := fs.String("config", "config/config.yaml", "Path to config file")
 
 	if err := fs.Parse(args); err != nil {
@@ -135,10 +141,23 @@ func handleLoad(args []string) {
 
 	startTime := time.Now()
 
+	// Default to API if neither flag is set
+	if !*useQueue && !*useAPI {
+		*useAPI = true
+	}
+
 	if *content {
-		loadContent(cfg)
+		if *useQueue {
+			loadContentToQueue(cfg)
+		} else {
+			loadContent(cfg)
+		}
 	} else if *watchHistory {
-		loadWatchHistory(cfg, *startBatch, *endBatch)
+		if *useQueue {
+			loadWatchHistoryToQueue(cfg, *startBatch, *endBatch)
+		} else {
+			loadWatchHistory(cfg, *startBatch, *endBatch)
+		}
 	} else {
 		fmt.Println("Please specify what to load: --content or --watch-history")
 		os.Exit(1)
@@ -338,7 +357,7 @@ func loadContent(cfg *config.Config) {
 		fmt.Println("Continuing anyway...")
 	}
 
-	// Load movies
+	// Load movies to content_item queue
 	moviesPath := filepath.Join(cfg.Output.ContentDir, "movies.json")
 	var movies []models.ContentItem
 	if err := utils.LoadJSON(moviesPath, &movies); err != nil {
@@ -352,7 +371,7 @@ func loadContent(cfg *config.Config) {
 	}
 	stats.Print()
 
-	// Load episodes
+	// Load episodes to content_item queue (series metadata is NOT loaded)
 	episodesPath := filepath.Join(cfg.Output.ContentDir, "episodes.json")
 	var episodes []models.SeriesItem
 	if err := utils.LoadJSON(episodesPath, &episodes); err != nil {
@@ -393,6 +412,85 @@ func loadWatchHistory(cfg *config.Config, startBatch, endBatch int) {
 		stats, err := client.LoadWatchHistoryBatch(batchPath)
 		if err != nil {
 			fmt.Printf("Error loading batch %d: %v\n", batch, err)
+			continue
+		}
+		stats.Print()
+	}
+}
+
+func loadContentToQueue(cfg *config.Config) {
+	fmt.Println("=== Publishing Content to RabbitMQ ===")
+
+	publisher, err := queue.NewRabbitMQPublisher(cfg)
+	if err != nil {
+		fmt.Printf("Error connecting to RabbitMQ: %v\n", err)
+		os.Exit(1)
+	}
+	defer publisher.Close()
+
+	// Check RabbitMQ health
+	fmt.Printf("Checking RabbitMQ connection at %s:%d...\n", cfg.RabbitMQ.Host, cfg.RabbitMQ.Port)
+	if err := publisher.HealthCheck(); err != nil {
+		fmt.Printf("Error: RabbitMQ health check failed: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("RabbitMQ connection OK")
+
+	// Publish movies to content_item_queue
+	moviesPath := filepath.Join(cfg.Output.ContentDir, "movies.json")
+	var movies []models.ContentItem
+	if err := utils.LoadJSON(moviesPath, &movies); err != nil {
+		fmt.Printf("Error loading movies: %v\n", err)
+		os.Exit(1)
+	}
+
+	stats, err := publisher.PublishMovies(movies)
+	if err != nil {
+		fmt.Printf("Error publishing movies: %v\n", err)
+	}
+	stats.Print()
+
+	// Publish episodes to series_item_queue (series metadata is NOT published)
+	episodesPath := filepath.Join(cfg.Output.ContentDir, "episodes.json")
+	var episodes []models.SeriesItem
+	if err := utils.LoadJSON(episodesPath, &episodes); err != nil {
+		fmt.Printf("Error loading episodes: %v\n", err)
+		os.Exit(1)
+	}
+
+	stats, err = publisher.PublishEpisodes(episodes)
+	if err != nil {
+		fmt.Printf("Error publishing episodes: %v\n", err)
+	}
+	stats.Print()
+}
+
+func loadWatchHistoryToQueue(cfg *config.Config, startBatch, endBatch int) {
+	fmt.Printf("=== Publishing Watch History to RabbitMQ (batches %d-%d) ===\n", startBatch, endBatch)
+
+	publisher, err := queue.NewRabbitMQPublisher(cfg)
+	if err != nil {
+		fmt.Printf("Error connecting to RabbitMQ: %v\n", err)
+		os.Exit(1)
+	}
+	defer publisher.Close()
+
+	// Check RabbitMQ health
+	fmt.Printf("Checking RabbitMQ connection at %s:%d...\n", cfg.RabbitMQ.Host, cfg.RabbitMQ.Port)
+	if err := publisher.HealthCheck(); err != nil {
+		fmt.Printf("Error: RabbitMQ health check failed: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("RabbitMQ connection OK")
+
+	for batch := startBatch; batch <= endBatch; batch++ {
+		batchPath := fmt.Sprintf("%s/watch_history_batch_%06d.json", cfg.Output.WatchHistoryDir, batch)
+
+		fmt.Printf("\nPublishing batch %d from %s...\n", batch, batchPath)
+
+		stats, err := publisher.PublishWatchHistoryBatch(batchPath)
+		if err != nil {
+			fmt.Printf("Error publishing batch %d: %v\n", batch, err)
 			continue
 		}
 		stats.Print()

@@ -2,16 +2,21 @@ package models
 
 // ContentItem represents a content item (from harbor/model/content_item.go)
 type ContentItem struct {
-	ContentAccess string `json:"content_access"`
-	ContentID     string `json:"content_id"`
-	Duration      int64  `json:"duration"`
-	Genres        string `json:"genres"`
-	Language      string `json:"language"`
-	Metas         string `json:"metas"`
-	PublishDate   string `json:"publish_date"`
-	ReleaseDate   string `json:"release_date"`
-	Title         string `json:"title"`
-	Type          string `json:"type"`
+	ContentID     string   `json:"content_id"`
+	SeriesID      string   `json:"series_id,omitempty"`
+	SeasonID      string   `json:"season_id,omitempty"`
+	EpisodeNumber uint64   `json:"episode_number,omitempty"`
+	Title         string   `json:"title"`
+	Type          string   `json:"type"`
+	ContentType   string   `json:"content_type"`
+	Language      string   `json:"language,omitempty"`
+	AgeRating     uint8    `json:"age_rating,omitempty"`
+	ContentAccess string   `json:"content_access,omitempty"`
+	PublishDate   string   `json:"publish_date,omitempty"`
+	ReleaseDate   string   `json:"release_date,omitempty"`
+	Duration      uint64   `json:"duration,omitempty"`
+	Metas         []string `json:"metas,omitempty"`
+	Genres        []string `json:"genres,omitempty"`
 }
 
 // ContentType constants
