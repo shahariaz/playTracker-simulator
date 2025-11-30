@@ -21,9 +21,25 @@ type ContentItem struct {
 
 // ContentType constants
 const (
-	ContentTypeMovie   = "movie"
-	ContentTypeSeries  = "series"
-	ContentTypeEpisode = "episode"
+	ContentTypeClips        = "clips"
+	ContentTypeDocumentaries = "documentaries"
+	ContentTypeDrama        = "drama"
+	ContentTypeHome         = "home"
+	ContentTypeMovies       = "movies"
+	ContentTypeMusicVideo   = "music-video"
+	ContentTypeSeries       = "series"
+	ContentTypeShorts       = "shorts"
+	ContentTypeSports       = "sports"
+	ContentTypeTournaments  = "tournaments"
+	ContentTypeTVProgram    = "tv-program"
+	ContentTypeTVShows      = "tv-shows"
+	ContentTypeVideo        = "video"
+	ContentTypeVideos       = "videos"
+	ContentTypeWebFilms     = "web-films"
+	
+	// Legacy constants for backward compatibility
+	ContentTypeMovie   = "movies"
+	ContentTypeEpisode = "series"
 )
 
 // SeriesItem extends ContentItem with series-specific information

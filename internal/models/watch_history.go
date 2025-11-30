@@ -19,8 +19,9 @@ type WatchHistory struct {
 	Casts           []string `json:"casts"`
 	Metas           []string `json:"metas"`
 	ProviderName    *string  `json:"provider_name"`
-	Language        *string  `json:"language"`
-	ReleaseYear     *string  `json:"release_year"`
+	Language        *string    `json:"language"`
+	ReleaseYear     *uint16    `json:"release_year"`
+	ReleaseDate     *time.Time `json:"release_date"`
 
 	WatchStatus   *string   `json:"watch_status"`
 	WatchDuration uint64    `json:"watch_duration"`

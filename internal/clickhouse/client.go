@@ -125,7 +125,7 @@ func (c *Client) CreateTables() error {
 			age_rating UInt8,
 			content_access String,
 			publish_date String,
-			release_date String,
+			release_date DateTime,
 			duration UInt64,
 			metas Array(String),
 			genres Array(String),
@@ -141,30 +141,33 @@ func (c *Client) CreateTables() error {
 			customer_id String,
 			profile_id String,
 			date_of_birth Nullable(String),
-			gender Nullable(String),
-			subscription_type Nullable(String),
+			gender LowCardinality(Nullable(String)),
+			subscription_type LowCardinality(Nullable(String)),
 			content_id String,
 			series_id Nullable(String),
-			content_type String,
+			content_type LowCardinality(String),
 			content_duration UInt64,
-			genres Array(String),
+			genres Array(LowCardinality(String)),
 			casts Array(String),
-			metas Array(String),
-			provider_name Nullable(String),
-			language Nullable(String),
-			release_year Nullable(String),
-			watch_status Nullable(String),
+			metas Array(LowCardinality(String)),
+			provider_name LowCardinality(Nullable(String)),
+		language LowCardinality(Nullable(String)),
+		release_year Nullable(UInt16),
+		release_date Nullable(Date),
+		watch_status LowCardinality(Nullable(String)),
 			watch_duration UInt64,
 			watched_at DateTime,
-			city Nullable(String),
-			country Nullable(String),
+			city LowCardinality(Nullable(String)),
+			country LowCardinality(Nullable(String)),
 			ip_address Nullable(String),
 			device_id Nullable(String),
-			device_type Nullable(String),
+			device_type LowCardinality(Nullable(String)),
 			created_at DateTime,
 			updated_at DateTime
-		) ENGINE = MergeTree()
-		ORDER BY (customer_id, watched_at)
+		) ENGINE = ReplacingMergeTree(updated_at)
+		ORDER BY (content_type, content_id, profile_id, watched_at)
+		PARTITION BY toYYYYMM(watched_at)
+		SETTINGS index_granularity = 8192
 	`, c.config.ClickHouse.Tables.WatchHistory)
 
 	// Execute table creation
@@ -176,7 +179,12 @@ func (c *Client) CreateTables() error {
 		return fmt.Errorf("failed to create watch_history table: %w", err)
 	}
 
-	fmt.Printf("ClickHouse tables created/verified: %s, %s\n", 
+	// Add bloom filter indexes for better performance (like production backend)
+	c.execSQL(fmt.Sprintf(`ALTER TABLE %s ADD INDEX IF NOT EXISTS idx_country country TYPE bloom_filter(0.01) GRANULARITY 4`, c.config.ClickHouse.Tables.WatchHistory))
+	c.execSQL(fmt.Sprintf(`ALTER TABLE %s ADD INDEX IF NOT EXISTS idx_genres genres TYPE bloom_filter(0.01) GRANULARITY 4`, c.config.ClickHouse.Tables.WatchHistory))
+	c.execSQL(fmt.Sprintf(`ALTER TABLE %s ADD INDEX IF NOT EXISTS idx_language language TYPE bloom_filter(0.01) GRANULARITY 4`, c.config.ClickHouse.Tables.WatchHistory))
+
+	fmt.Printf("✓ ClickHouse tables created/verified: %s, %s\n", 
 		c.config.ClickHouse.Tables.ContentItems, 
 		c.config.ClickHouse.Tables.WatchHistory)
 
@@ -384,9 +392,9 @@ func (c *Client) insertWatchHistoryBatchDB(ctx context.Context, records []models
 		INSERT INTO %s (
 			uuid, customer_id, profile_id, date_of_birth, gender, subscription_type,
 			content_id, series_id, content_type, content_duration, genres, casts, metas,
-			provider_name, language, release_year, watch_status, watch_duration, watched_at,
+			provider_name, language, release_year, release_date, watch_status, watch_duration, watched_at,
 			city, country, ip_address, device_id, device_type, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, tableName))
 	if err != nil {
 		return err
@@ -412,6 +420,7 @@ func (c *Client) insertWatchHistoryBatchDB(ctx context.Context, records []models
 			record.ProviderName,
 			record.Language,
 			record.ReleaseYear,
+			record.ReleaseDate,
 			record.WatchStatus,
 			record.WatchDuration,
 			record.WatchedAt,

@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS playtracker.content_items (
     age_rating UInt8,
     content_access String,
     publish_date String,
-    release_date String,
+    release_date DateTime,
     duration UInt64,
     metas Array(String),
     genres Array(String),
@@ -39,42 +39,43 @@ CREATE TABLE IF NOT EXISTS playtracker.watch_history (
     customer_id String,
     profile_id String,
     date_of_birth Nullable(String),
-    gender Nullable(String),
-    subscription_type Nullable(String),
+    gender LowCardinality(Nullable(String)),
+    subscription_type LowCardinality(Nullable(String)),
     content_id String,
     series_id Nullable(String),
-    content_type String,
+    content_type LowCardinality(String),
     content_duration UInt64,
-    genres Array(String),
+    genres Array(LowCardinality(String)),
     casts Array(String),
-    metas Array(String),
-    provider_name Nullable(String),
-    language Nullable(String),
-    release_year Nullable(String),
-    watch_status Nullable(String),
+    metas Array(LowCardinality(String)),
+    provider_name LowCardinality(Nullable(String)),
+    language LowCardinality(Nullable(String)),
+    release_year Nullable(UInt16),
+    release_date Nullable(Date),
+    watch_status LowCardinality(Nullable(String)),
     watch_duration UInt64,
     watched_at DateTime,
-    city Nullable(String),
-    country Nullable(String),
+    city LowCardinality(Nullable(String)),
+    country LowCardinality(Nullable(String)),
     ip_address Nullable(String),
     device_id Nullable(String),
-    device_type Nullable(String),
-    created_at DateTime,
-    updated_at DateTime
-) ENGINE = MergeTree()
-ORDER BY (customer_id, watched_at)
+    device_type LowCardinality(Nullable(String)),
+    created_at DateTime DEFAULT now(),
+    updated_at DateTime DEFAULT now()
+) ENGINE = ReplacingMergeTree(updated_at)
+ORDER BY (content_type, content_id, profile_id, watched_at)
+PARTITION BY toYYYYMM(watched_at)
 SETTINGS index_granularity = 8192;
 
--- Create indexes for common queries
--- Content lookup by type and genre
-ALTER TABLE playtracker.content_items ADD INDEX idx_content_type type TYPE minmax GRANULARITY 1;
-ALTER TABLE playtracker.content_items ADD INDEX idx_genres genres TYPE bloom_filter(0.01) GRANULARITY 1;
+-- Add bloom filter indexes for better performance (matching production backend)
+ALTER TABLE playtracker.watch_history ADD INDEX IF NOT EXISTS idx_country country TYPE bloom_filter(0.01) GRANULARITY 4;
+ALTER TABLE playtracker.watch_history ADD INDEX IF NOT EXISTS idx_genres genres TYPE bloom_filter(0.01) GRANULARITY 4;
+ALTER TABLE playtracker.watch_history ADD INDEX IF NOT EXISTS idx_language language TYPE bloom_filter(0.01) GRANULARITY 4;
 
--- Watch history analytics indexes
-ALTER TABLE playtracker.watch_history ADD INDEX idx_content_type content_type TYPE minmax GRANULARITY 1;
-ALTER TABLE playtracker.watch_history ADD INDEX idx_country country TYPE minmax GRANULARITY 1;
-ALTER TABLE playtracker.watch_history ADD INDEX idx_device_type device_type TYPE minmax GRANULARITY 1;
-ALTER TABLE playtracker.watch_history ADD INDEX idx_watch_status watch_status TYPE minmax GRANULARITY 1;
+-- Create indexes for common queries
+-- Content lookup by type and genre  
+ALTER TABLE playtracker.content_items ADD INDEX IF NOT EXISTS idx_content_type type TYPE minmax GRANULARITY 1;
+ALTER TABLE playtracker.content_items ADD INDEX IF NOT EXISTS idx_genres genres TYPE bloom_filter(0.01) GRANULARITY 1;
 
 -- Sample queries for analytics
 

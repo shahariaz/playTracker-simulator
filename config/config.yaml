@@ -91,11 +91,11 @@ rabbitmq:
   series_item_queue: "series_item"
 
 clickhouse:
-  host: "localhost"
+  host: "49.213.53.110"
   port: 9000
   database: "playtracker"
-  username: "default"
-  password: "clickhome"
+  username: "dev"
+  password: "etachoromkothin"
   batch_size: 10000
   max_open_conns: 10
   max_idle_conns: 5

@@ -17,6 +17,25 @@ import (
 	"github.com/shahariaz/playtracker-simulator/internal/utils"
 )
 
+// Available content types for random selection
+var contentTypes = []string{
+	models.ContentTypeClips,
+	models.ContentTypeDocumentaries,
+	models.ContentTypeDrama,
+	models.ContentTypeHome,
+	models.ContentTypeMovies,
+	models.ContentTypeMusicVideo,
+	models.ContentTypeSeries,
+	models.ContentTypeShorts,
+	models.ContentTypeSports,
+	models.ContentTypeTournaments,
+	models.ContentTypeTVProgram,
+	models.ContentTypeTVShows,
+	models.ContentTypeVideo,
+	models.ContentTypeVideos,
+	models.ContentTypeWebFilms,
+}
+
 // WatchHistoryGenerator generates watch history data
 type WatchHistoryGenerator struct {
 	config   *config.Config
@@ -177,9 +196,10 @@ func (g *WatchHistoryGenerator) generateWatchHistoryForUser(user models.User) []
 		var content models.ContentItem
 		var contentID uint64
 		var contentType string
-		var releaseYear string
+		var releaseYear uint16
+		var releaseDate *time.Time
 
-		// 35% chance to continue binge watching current series
+		// 35% chance to continue binge watching current series (only for series content)
 		continueBinge := currentSeriesID > 0 && utils.RandomFloat() < 0.35 && currentSeriesEpisodeIdx < len(currentSeriesEpisodes)
 
 		if continueBinge {
@@ -187,27 +207,32 @@ func (g *WatchHistoryGenerator) generateWatchHistoryForUser(user models.User) []
 			episode := currentSeriesEpisodes[currentSeriesEpisodeIdx]
 			content = episode.ContentItem
 			contentID, _ = strconv.ParseUint(episode.ContentID, 10, 64)
-			contentType = models.ContentTypeEpisode
-			releaseYear = strings.Split(episode.ReleaseDate, "-")[0]
+			contentType = models.ContentTypeSeries
+			releaseYear = parseReleaseYearUint16(episode.ReleaseDate)
+			releaseDate = parseReleaseDate(episode.ReleaseDate)
 			currentSeriesEpisodeIdx++
 		} else {
-			// Select new content based on preference
-			movieProbability := 0.4 // 40% movies, 60% episodes
+			// Randomly select content type from available options
+			contentType = utils.RandomSelect(contentTypes)
+			
+			// Select content based on type preference
+			seriesProbability := 0.3 // 30% series (which can trigger binge watching), 70% other content
 
-			if utils.RandomFloat() < movieProbability {
-				// Select a movie
-				content, contentID = g.selectContent(user, watchedContent, true)
-				contentType = models.ContentTypeMovie
-				releaseYear = strings.Split(content.ReleaseDate, "-")[0]
-				currentSeriesID = 0
-			} else {
-				// Select a series episode
+			if contentType == models.ContentTypeSeries || (contentType == models.ContentTypeMovies && utils.RandomFloat() < seriesProbability) {
+				// Select a series episode for binge watching potential
 				content, contentID = g.selectContent(user, watchedContent, false)
-				contentType = models.ContentTypeEpisode
-				releaseYear = strings.Split(content.ReleaseDate, "-")[0]
+				contentType = models.ContentTypeSeries // Ensure it's series for binge watching
+				releaseYear = parseReleaseYearUint16(content.ReleaseDate)
+				releaseDate = parseReleaseDate(content.ReleaseDate)
 
 				// Start binge watching this series
 				g.startBingeWatching(contentID, &currentSeriesID, &currentSeriesEpisodes, &currentSeriesEpisodeIdx)
+			} else {
+				// Select any content (movie or episode) but assign random content type
+				content, contentID = g.selectContent(user, watchedContent, utils.RandomFloat() < 0.5)
+				releaseYear = parseReleaseYearUint16(content.ReleaseDate)
+				releaseDate = parseReleaseDate(content.ReleaseDate)
+				currentSeriesID = 0 // Reset series binge watching
 			}
 		}
 
@@ -266,7 +291,8 @@ func (g *WatchHistoryGenerator) generateWatchHistoryForUser(user models.User) []
 			Metas:           metas,
 			ProviderName:    strPtr(providerName),
 			Language:        strPtr(content.Language),
-			ReleaseYear:     strPtr(releaseYear),
+			ReleaseYear:     uint16Ptr(releaseYear),
+			ReleaseDate:     releaseDate,
 
 			WatchStatus:   strPtr(watchStatus),
 			WatchDuration: watchDuration,
@@ -529,4 +555,46 @@ func (g *WatchHistoryGenerator) GenerateWatchHistoryForBatches(startBatch, endBa
 
 	fmt.Printf("\n✓ Successfully generated watch history for all %d batches\n", totalBatches)
 	return nil
+}
+
+// strPtr returns a pointer to a string
+func strPtr(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
+// uint16Ptr returns a pointer to a uint16
+func uint16Ptr(u uint16) *uint16 {
+	if u == 0 {
+		return nil
+	}
+	return &u
+}
+
+// parseReleaseYearUint16 parses release year from date string and returns uint16
+func parseReleaseYearUint16(dateStr string) uint16 {
+	if len(dateStr) >= 4 {
+		yearStr := dateStr[:4]
+		if year, err := strconv.Atoi(yearStr); err == nil {
+			return uint16(year)
+		}
+	}
+	return 2023
+}
+
+// parseReleaseDate parses release year and generates a full release date
+func parseReleaseDate(dateStr string) *time.Time {
+	year := parseReleaseYearUint16(dateStr)
+	if year == 0 {
+		return nil
+	}
+	
+	// Generate a random month (1-12) and day (1-28 to avoid month-end issues)
+	month := time.Month(utils.RandomInt(1, 12))
+	day := utils.RandomInt(1, 28)
+	
+	releaseDate := time.Date(int(year), month, day, 0, 0, 0, 0, time.UTC)
+	return &releaseDate
 }
