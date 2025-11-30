@@ -9,10 +9,11 @@ import (
 
 // Config represents the main configuration structure
 type Config struct {
-	Simulation SimulationConfig `yaml:"simulation"`
-	Content    ContentConfig    `yaml:"content"`
-	Users      UsersConfig      `yaml:"users"`
-	Genres     []string         `yaml:"genres"`
+	Simulation  SimulationConfig  `yaml:"simulation"`
+	Content     ContentConfig     `yaml:"content"`
+	Users       UsersConfig       `yaml:"users"`
+	WatchHistory WatchHistoryConfig `yaml:"watch_history"`
+	Genres      []string          `yaml:"genres"`
 	API        APIConfig        `yaml:"api"`
 	RabbitMQ   RabbitMQConfig   `yaml:"rabbitmq"`
 	ClickHouse ClickHouseConfig `yaml:"clickhouse"`
@@ -52,6 +53,29 @@ type UsersConfig struct {
 	Distribution     DistributionConfig     `yaml:"distribution"`
 	ActivityPatterns ActivityPatternsConfig `yaml:"activity_patterns"`
 	Demographics     DemographicsConfig     `yaml:"demographics"`
+}
+
+// WatchHistoryConfig holds watch history generation settings
+type WatchHistoryConfig struct {
+	VideoCounts       VideoCountsConfig `yaml:"video_counts"`
+	BatchSize         int               `yaml:"batch_size"`
+	WorkerCount       int               `yaml:"worker_count"`
+	ProgressBarWidth  int               `yaml:"progress_bar_width"`
+	BingeProbability  float64           `yaml:"binge_probability"`
+	SeriesProbability float64           `yaml:"series_probability"`
+}
+
+// VideoCountsConfig holds video count settings for different user tiers
+type VideoCountsConfig struct {
+	LightUsers  VideoRangeConfig `yaml:"light_users"`
+	MediumUsers VideoRangeConfig `yaml:"medium_users"`
+	HeavyUsers  VideoRangeConfig `yaml:"heavy_users"`
+}
+
+// VideoRangeConfig holds min/max video count range
+type VideoRangeConfig struct {
+	Min int `yaml:"min"`
+	Max int `yaml:"max"`
 }
 
 // DistributionConfig holds user tier distribution
@@ -189,6 +213,18 @@ func GetDefaultConfig() *Config {
 					{Code: "AU", Weight: 0.05, Cities: []string{"Sydney", "Melbourne", "Brisbane", "Perth", "Adelaide"}},
 				},
 			},
+		},
+		WatchHistory: WatchHistoryConfig{
+			VideoCounts: VideoCountsConfig{
+				LightUsers:  VideoRangeConfig{Min: 10, Max: 20},
+				MediumUsers: VideoRangeConfig{Min: 20, Max: 30},
+				HeavyUsers:  VideoRangeConfig{Min: 30, Max: 40},
+			},
+			BatchSize:         100000,
+			WorkerCount:       50,
+			ProgressBarWidth:  50,
+			BingeProbability:  0.35,
+			SeriesProbability: 0.30,
 		},
 		Genres: []string{
 			"Action", "Comedy", "Drama", "Thriller", "Romance",

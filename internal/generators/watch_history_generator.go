@@ -105,7 +105,7 @@ func (g *WatchHistoryGenerator) GenerateWatchHistoryForBatch(batchNumber int, us
 
 	// Concurrent user processing
 	userCount := len(userBatch.Users)
-	workerCount := 50 // Number of concurrent workers per batch
+	workerCount := g.config.WatchHistory.WorkerCount // Number of concurrent workers per batch
 	if userCount < workerCount {
 		workerCount = userCount
 	}
@@ -120,7 +120,7 @@ func (g *WatchHistoryGenerator) GenerateWatchHistoryForBatch(batchNumber int, us
 		progressbar.OptionSetDescription(fmt.Sprintf("Batch %d", batchNumber)),
 		progressbar.OptionShowCount(),
 		progressbar.OptionShowIts(),
-		progressbar.OptionSetWidth(50),
+		progressbar.OptionSetWidth(g.config.WatchHistory.ProgressBarWidth),
 	)
 
 	// Start workers
@@ -171,7 +171,7 @@ func (g *WatchHistoryGenerator) GenerateWatchHistoryForBatch(batchNumber int, us
 // generateWatchHistoryForUser generates watch history for a single user
 func (g *WatchHistoryGenerator) generateWatchHistoryForUser(user models.User) []models.WatchHistory {
 	// Determine number of videos to watch based on tier
-	minVideos, maxVideos := GetVideoCountForTier(user.UserTier)
+	minVideos, maxVideos := GetVideoCountForTier(user.UserTier, g.config)
 	videoCount := utils.RandomInt(minVideos, maxVideos)
 
 	// Determine active period
@@ -199,8 +199,8 @@ func (g *WatchHistoryGenerator) generateWatchHistoryForUser(user models.User) []
 		var releaseYear uint16
 		var releaseDate *time.Time
 
-		// 35% chance to continue binge watching current series (only for series content)
-		continueBinge := currentSeriesID > 0 && utils.RandomFloat() < 0.35 && currentSeriesEpisodeIdx < len(currentSeriesEpisodes)
+		// Chance to continue binge watching current series (only for series content)
+		continueBinge := currentSeriesID > 0 && utils.RandomFloat() < g.config.WatchHistory.BingeProbability && currentSeriesEpisodeIdx < len(currentSeriesEpisodes)
 
 		if continueBinge {
 			// Continue watching current series
@@ -216,11 +216,11 @@ func (g *WatchHistoryGenerator) generateWatchHistoryForUser(user models.User) []
 			contentType = utils.RandomSelect(contentTypes)
 			
 			// Select content based on type preference
-			seriesProbability := 0.3 // 30% series (which can trigger binge watching), 70% other content
+			seriesProbability := g.config.WatchHistory.SeriesProbability // Configurable series vs other content
 
 			if contentType == models.ContentTypeSeries || (contentType == models.ContentTypeMovies && utils.RandomFloat() < seriesProbability) {
 				// Select a series episode for binge watching potential
-				content, contentID = g.selectContent(user, watchedContent, false)
+				content, contentID = g.selectSeriesContent(user, watchedContent)
 				contentType = models.ContentTypeSeries // Ensure it's series for binge watching
 				releaseYear = parseReleaseYearUint16(content.ReleaseDate)
 				releaseDate = parseReleaseDate(content.ReleaseDate)
@@ -228,8 +228,8 @@ func (g *WatchHistoryGenerator) generateWatchHistoryForUser(user models.User) []
 				// Start binge watching this series
 				g.startBingeWatching(contentID, &currentSeriesID, &currentSeriesEpisodes, &currentSeriesEpisodeIdx)
 			} else {
-				// Select any content (movie or episode) but assign random content type
-				content, contentID = g.selectContent(user, watchedContent, utils.RandomFloat() < 0.5)
+				// Select movie content (non-series)
+				content, contentID = g.selectMovieContent(user, watchedContent)
 				releaseYear = parseReleaseYearUint16(content.ReleaseDate)
 				releaseDate = parseReleaseDate(content.ReleaseDate)
 				currentSeriesID = 0 // Reset series binge watching
@@ -274,6 +274,24 @@ func (g *WatchHistoryGenerator) generateWatchHistoryForUser(user models.User) []
 		deviceID := strconv.FormatUint(user.DeviceID, 10)
 
 		// Create watch history record
+		// Enforce constraint: if content_type is series, series_id cannot be null
+		var seriesID *string
+		if contentType == models.ContentTypeSeries {
+			// For series content, series_id must not be null
+			// Convert SeriesID from episode context or use ContentItem.SeriesID
+			if currentSeriesID > 0 {
+				seriesID = strPtr(strconv.FormatUint(currentSeriesID, 10))
+			} else if content.SeriesID != "" {
+				seriesID = strPtr(content.SeriesID)
+			} else {
+				// Skip this record if series content has no series_id
+				continue
+			}
+		} else {
+			// For non-series content, series_id should be null
+			seriesID = nil
+		}
+
 		watchRecord := models.WatchHistory{
 			UUID:             uuid.New().String(),
 			CustomerID:       customerID,
@@ -283,7 +301,7 @@ func (g *WatchHistoryGenerator) generateWatchHistoryForUser(user models.User) []
 			SubscriptionType: strPtr(user.SubscriptionType),
 
 			ContentID:       content.ContentID,
-			SeriesID:        strPtr(content.SeriesID),
+			SeriesID:        seriesID,
 			ContentType:     contentType,
 			ContentDuration: contentDuration,
 			Genres:          genres,
@@ -313,52 +331,66 @@ func (g *WatchHistoryGenerator) generateWatchHistoryForUser(user models.User) []
 	return watchHistory
 }
 
-// selectContent selects content based on user preferences
-func (g *WatchHistoryGenerator) selectContent(user models.User, watched map[string]bool, isMovie bool) (models.ContentItem, uint64) {
+// selectSeriesContent selects series episode content based on user preferences
+// Enforces constraint: content IDs are unique within each series
+func (g *WatchHistoryGenerator) selectSeriesContent(user models.User, watched map[string]bool) (models.ContentItem, uint64) {
 	var candidates []models.ContentItem
 	var candidateIDs []uint64
 
-	if isMovie {
-		for _, movie := range g.movies {
-			if !watched[movie.ContentID] {
-				// Check genre preference
-				if g.matchesGenrePreference(movie.Genres, user.GenrePreferences) {
-					candidates = append(candidates, movie)
-					id, _ := strconv.ParseUint(movie.ContentID, 10, 64)
-					candidateIDs = append(candidateIDs, id)
-				}
-			}
+	// Select from episodes only (series content)
+	for _, episode := range g.episodes {
+		// Check genre preference and ensure content has series_id
+		if episode.SeriesID != 0 && g.matchesGenrePreference(episode.Genres, user.GenrePreferences) {
+			candidates = append(candidates, episode.ContentItem)
+			id, _ := strconv.ParseUint(episode.ContentID, 10, 64)
+			candidateIDs = append(candidateIDs, id)
 		}
-	} else {
+	}
+
+	// If no candidates match preferences, fall back to any series episode with series_id
+	if len(candidates) == 0 {
 		for _, episode := range g.episodes {
-			if !watched[episode.ContentID] {
-				// Check genre preference
-				if g.matchesGenrePreference(episode.Genres, user.GenrePreferences) {
-					candidates = append(candidates, episode.ContentItem)
-					id, _ := strconv.ParseUint(episode.ContentID, 10, 64)
-					candidateIDs = append(candidateIDs, id)
-				}
+			if episode.SeriesID != 0 {
+				candidates = append(candidates, episode.ContentItem)
+				id, _ := strconv.ParseUint(episode.ContentID, 10, 64)
+				candidateIDs = append(candidateIDs, id)
 			}
 		}
 	}
 
-	// If no candidates match preferences, fall back to any unwatched content
 	if len(candidates) == 0 {
-		if isMovie {
-			for _, movie := range g.movies {
-				if !watched[movie.ContentID] {
-					candidates = append(candidates, movie)
-					id, _ := strconv.ParseUint(movie.ContentID, 10, 64)
-					candidateIDs = append(candidateIDs, id)
-				}
+		return models.ContentItem{}, 0
+	}
+
+	idx := utils.RandomInt(0, len(candidates)-1)
+	return candidates[idx], candidateIDs[idx]
+}
+
+// selectMovieContent selects movie content based on user preferences
+// Movies don't have series_id (should be null for non-series content)
+func (g *WatchHistoryGenerator) selectMovieContent(user models.User, watched map[string]bool) (models.ContentItem, uint64) {
+	var candidates []models.ContentItem
+	var candidateIDs []uint64
+
+	// Select from movies only (non-series content)
+	for _, movie := range g.movies {
+		if !watched[movie.ContentID] {
+			// Check genre preference
+			if g.matchesGenrePreference(movie.Genres, user.GenrePreferences) {
+				candidates = append(candidates, movie)
+				id, _ := strconv.ParseUint(movie.ContentID, 10, 64)
+				candidateIDs = append(candidateIDs, id)
 			}
-		} else {
-			for _, episode := range g.episodes {
-				if !watched[episode.ContentID] {
-					candidates = append(candidates, episode.ContentItem)
-					id, _ := strconv.ParseUint(episode.ContentID, 10, 64)
-					candidateIDs = append(candidateIDs, id)
-				}
+		}
+	}
+
+	// If no candidates match preferences, fall back to any unwatched movie
+	if len(candidates) == 0 {
+		for _, movie := range g.movies {
+			if !watched[movie.ContentID] {
+				candidates = append(candidates, movie)
+				id, _ := strconv.ParseUint(movie.ContentID, 10, 64)
+				candidateIDs = append(candidateIDs, id)
 			}
 		}
 	}

@@ -13,8 +13,8 @@ content:
     count: 10000
 
 users:
-  total_count: 30
-  batch_size: 100000
+  total_count: 1000
+  batch_size: 1000
   
   distribution:
     light_users: 0.65    # 10-20 videos
@@ -50,6 +50,28 @@ users:
       - code: "AU"
         weight: 0.01
         cities: ["Sydney", "Melbourne", "Brisbane", "Perth", "Adelaide"]
+
+watch_history:
+  # Video count ranges for different user tiers
+  video_counts:
+    light_users:
+      min: 5
+      max: 10
+    medium_users:
+      min: 10
+      max: 15
+    heavy_users:
+      min: 15
+      max: 20
+  
+  # Generation settings
+  batch_size: 1000             # Number of users per batch file
+  worker_count: 10             # Concurrent workers per batch
+  progress_bar_width: 30       # Progress bar display width
+  
+  # Behavioral probabilities
+  binge_probability: 0.40      # Chance to continue watching current series
+  series_probability: 0.25     # Chance to select series vs other content
 
 genres:
   - Drama

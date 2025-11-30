@@ -243,16 +243,16 @@ func (g *UserGenerator) selectDeviceType() string {
 	return types[utils.WeightedRandomSelect(weights)]
 }
 
-// GetVideoCountForTier returns the min/max video count for a user tier
-func GetVideoCountForTier(tier string) (int, int) {
+// GetVideoCountForTier returns the min/max video count for a user tier from config
+func GetVideoCountForTier(tier string, cfg *config.Config) (int, int) {
 	switch tier {
 	case models.UserTierLight:
-		return 10, 20
+		return cfg.WatchHistory.VideoCounts.LightUsers.Min, cfg.WatchHistory.VideoCounts.LightUsers.Max
 	case models.UserTierMedium:
-		return 20, 30
+		return cfg.WatchHistory.VideoCounts.MediumUsers.Min, cfg.WatchHistory.VideoCounts.MediumUsers.Max
 	case models.UserTierHeavy:
-		return 30, 40
+		return cfg.WatchHistory.VideoCounts.HeavyUsers.Min, cfg.WatchHistory.VideoCounts.HeavyUsers.Max
 	default:
-		return 10, 20
+		return cfg.WatchHistory.VideoCounts.LightUsers.Min, cfg.WatchHistory.VideoCounts.LightUsers.Max
 	}
 }
