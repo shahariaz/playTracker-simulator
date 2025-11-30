@@ -9,6 +9,9 @@ bin/
 # Generated data
 data/
 
+# Keep SQL schema files
+!sql/
+
 # Test binary, built with `go test -c`
 *.test
 

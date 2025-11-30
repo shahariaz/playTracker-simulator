@@ -38,6 +38,10 @@ load-content:
 load-content-queue:
 	go run cmd/simulator/main.go load --content --use-queue
 
+# Load content to ClickHouse
+load-content-clickhouse:
+	go run cmd/simulator/main.go load --content --use-clickhouse --create-tables
+
 # Load watch history to Harbor API (default: first 10 batches)
 load-watch-history:
 	go run cmd/simulator/main.go load --watch-history --start-batch=1 --end-batch=10 --use-api
@@ -45,6 +49,10 @@ load-watch-history:
 # Load watch history to RabbitMQ queues (default: first 10 batches)
 load-watch-history-queue:
 	go run cmd/simulator/main.go load --watch-history --start-batch=1 --end-batch=10 --use-queue
+
+# Load watch history to ClickHouse (default: first 10 batches)
+load-watch-history-clickhouse:
+	go run cmd/simulator/main.go load --watch-history --start-batch=1 --end-batch=10 --use-clickhouse --create-tables
 
 # Load watch history for specific batch range
 # Usage: make load-watch-history-batch START=1 END=10
@@ -55,6 +63,11 @@ load-watch-history-batch:
 # Usage: make load-watch-history-batch-queue START=1 END=10
 load-watch-history-batch-queue:
 	go run cmd/simulator/main.go load --watch-history --start-batch=$(START) --end-batch=$(END) --use-queue
+
+# Load watch history to ClickHouse for specific batch range
+# Usage: make load-watch-history-batch-clickhouse START=1 END=10
+load-watch-history-batch-clickhouse:
+	go run cmd/simulator/main.go load --watch-history --start-batch=$(START) --end-batch=$(END) --use-clickhouse
 
 # Show statistics about generated data
 stats:
@@ -86,10 +99,13 @@ help:
 	@echo "  generate-watch-history-batch START=1 END=10 - Generate specific batch range"
 	@echo "  load-content             - Load content to Harbor API"
 	@echo "  load-content-queue       - Load content to RabbitMQ queues"
+	@echo "  load-content-clickhouse  - Load content to ClickHouse database"
 	@echo "  load-watch-history       - Load watch history to Harbor API (first 10 batches)"
 	@echo "  load-watch-history-queue - Load watch history to RabbitMQ queues (first 10 batches)"
+	@echo "  load-watch-history-clickhouse - Load watch history to ClickHouse (first 10 batches)"
 	@echo "  load-watch-history-batch START=1 END=10 - Load specific batch range to API"
 	@echo "  load-watch-history-batch-queue START=1 END=10 - Load specific batch range to queue"
+	@echo "  load-watch-history-batch-clickhouse START=1 END=10 - Load specific batch range to ClickHouse"
 	@echo "  stats                    - Show statistics about generated data"
 	@echo "  test                     - Run tests"
 	@echo "  clean                    - Remove generated data and binaries"

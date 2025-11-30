@@ -41,12 +41,12 @@ This simulator generates:
 - Processes 30M users → 600M+ events in 1-2 hours (on modern hardware)
 
 ### API Integration
-- POST to Harbor API endpoints OR publish to RabbitMQ queues
+- POST to Harbor API endpoints OR publish to RabbitMQ queues OR insert directly to ClickHouse
 - Parallel processing with configurable workers
 - Rate limiting support
 - Retry logic with exponential backoff
 - Progress tracking and statistics
-- Dual loading modes: REST API or Message Queue
+- Triple loading modes: REST API, Message Queue, or Direct Database
 
 ## Project Structure
 
@@ -133,11 +133,17 @@ go run cmd/simulator/main.go load --content --use-api
 # Load content to RabbitMQ queues
 go run cmd/simulator/main.go load --content --use-queue
 
+# Load content to ClickHouse database
+go run cmd/simulator/main.go load --content --use-clickhouse --create-tables
+
 # Load watch history (specific user batches) to API
 go run cmd/simulator/main.go load --watch-history --start-batch=1 --end-batch=10 --use-api
 
 # Load watch history to RabbitMQ queues
 go run cmd/simulator/main.go load --watch-history --start-batch=1 --end-batch=10 --use-queue
+
+# Load watch history to ClickHouse database
+go run cmd/simulator/main.go load --watch-history --start-batch=1 --end-batch=10 --use-clickhouse --create-tables
 
 # Show statistics about generated data
 go run cmd/simulator/main.go stats
@@ -157,8 +163,10 @@ make generate-users              # Generate user data only
 make generate-watch-history      # Generate watch history (first 10 batches)
 make load-content                # Load content to Harbor API
 make load-content-queue          # Load content to RabbitMQ queues
+make load-content-clickhouse     # Load content to ClickHouse database
 make load-watch-history          # Load watch history to Harbor API
 make load-watch-history-queue    # Load watch history to RabbitMQ queues
+make load-watch-history-clickhouse # Load watch history to ClickHouse database
 make stats                       # Show statistics
 make clean                       # Remove generated data and binaries
 make help                        # Show help
@@ -175,6 +183,9 @@ make load-watch-history-batch START=1 END=50
 
 # Load watch history to RabbitMQ for batches 1-50
 make load-watch-history-batch-queue START=1 END=50
+
+# Load watch history to ClickHouse for batches 1-50
+make load-watch-history-batch-clickhouse START=1 END=50
 ```
 
 ## Configuration
@@ -225,11 +236,25 @@ rabbitmq:
   watch_history_queue: "watch_history_queue"
   content_item_queue: "content_item_queue"
   series_item_queue: "series_item_queue"
+
+clickhouse:
+  host: "localhost"
+  port: 9000
+  database: "playtracker"
+  username: "default"
+  password: ""
+  batch_size: 10000
+  max_open_conns: 10
+  max_idle_conns: 5
+  conn_max_lifetime_minutes: 60
+  tables:
+    content_items: "content_items"
+    watch_history: "watch_history"
 ```
 
 ## Loading Options
 
-The simulator supports two ways to load generated data:
+The simulator supports three ways to load generated data:
 
 ### 1. Harbor API (REST)
 Direct HTTP POST to Harbor API endpoints:
@@ -243,13 +268,26 @@ Publish messages to RabbitMQ queues:
 - Best for: Asynchronous processing, decoupled architecture, high throughput
 - Features: Persistent messages, durable queues, parallel publishing
 
+### 3. ClickHouse Database
+Direct batch insertion to ClickHouse database:
+- Uses `--use-clickhouse` flag
+- Best for: Analytics workloads, high-performance ingestion, data warehousing
+- Features: Batch processing, concurrent inserts, automatic table creation
+- Optimized for: Large-scale data analytics, time-series data, OLAP queries
+
 **RabbitMQ Setup:**
 The simulator creates three queues automatically:
 - `content_item_queue` - For movies
 - `series_item_queue` - For TV series episodes
 - `watch_history_queue` - For watch history events
 
-Your backend consumer should listen to these queues to process the data.
+**ClickHouse Setup:**
+The simulator can automatically create tables with optimal schemas:
+- `content_items` - Partitioned by release date, ordered by content_id and type
+- `watch_history` - Partitioned by watch date, ordered by customer_id and watched_at
+- Uses MergeTree engine for optimal performance
+
+Your backend consumer should listen to these queues to process the data, or query ClickHouse directly for analytics.
 
 ## Data Models
 
@@ -319,6 +357,10 @@ The simulator integrates with the Harbor API using the following endpoints:
   - Uses Go's goroutines for massive parallelism
   - 10 batches + 50 users per batch = 500x concurrent workers
 - **API Loading**: Up to 100 requests/second (configurable)
+- **ClickHouse Loading**: Up to 100,000+ records/second (batch inserts)
+  - **Optimized for Analytics**: Direct database insertion bypasses API overhead
+  - **Concurrent Batches**: Multiple workers insert batches simultaneously
+  - **Memory Efficient**: Streaming inserts with configurable batch sizes
 
 ### Memory Usage
 - Batch processing keeps memory usage manageable
@@ -385,7 +427,9 @@ See [PERFORMANCE.md](./PERFORMANCE.md) for detailed information about:
 ## Dependencies
 
 - `github.com/brianvoe/gofakeit/v6` - Fake data generation
+- `github.com/ClickHouse/clickhouse-go/v2` - ClickHouse database driver
 - `github.com/google/uuid` - UUID generation
+- `github.com/rabbitmq/amqp091-go` - RabbitMQ client
 - `github.com/schollz/progressbar/v3` - Progress bar display
 - `github.com/valyala/fasthttp` - High-performance HTTP client
 - `golang.org/x/sync` - Synchronization primitives

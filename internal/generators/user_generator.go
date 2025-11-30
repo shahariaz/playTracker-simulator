@@ -236,9 +236,9 @@ func (g *UserGenerator) selectSubscriptionType() string {
 	return types[utils.WeightedRandomSelect(weights)]
 }
 
-// selectDeviceType selects device type with realistic distribution
+// selectDeviceType selects device type with Bangladesh preferences (mobile-first)
 func (g *UserGenerator) selectDeviceType() string {
-	weights := []float64{0.45, 0.15, 0.25, 0.15}
+	weights := []float64{0.70, 0.10, 0.12, 0.08} // Mobile dominant in Bangladesh
 	types := []string{models.DeviceTypeMobile, models.DeviceTypeTablet, models.DeviceTypeDesktop, models.DeviceTypeTV}
 	return types[utils.WeightedRandomSelect(weights)]
 }

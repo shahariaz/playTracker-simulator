@@ -29,35 +29,49 @@ users:
 
   demographics:
     countries:
-      - code: "US"
-        weight: 0.35
-        cities: ["New York", "Los Angeles", "Chicago", "Houston", "Phoenix"]
+      - code: "BD"
+        weight: 0.70
+        cities: ["Dhaka", "Chittagong", "Sylhet", "Khulna", "Rajshahi", "Barisal", "Rangpur", "Comilla", "Gazipur", "Narayanganj", "Mymensingh", "Bogra", "Jessore"]
       - code: "IN"
-        weight: 0.20
-        cities: ["Mumbai", "Delhi", "Bangalore", "Hyderabad", "Chennai"]
-      - code: "UK"
-        weight: 0.10
-        cities: ["London", "Manchester", "Birmingham", "Leeds", "Glasgow"]
-      - code: "CA"
+        weight: 0.12
+        cities: ["Kolkata", "Mumbai", "Delhi", "Chennai", "Bangalore"]
+      - code: "PK"
         weight: 0.08
+        cities: ["Karachi", "Lahore", "Islamabad", "Faisalabad", "Rawalpindi"]
+      - code: "UK"
+        weight: 0.04
+        cities: ["London", "Manchester", "Birmingham", "Bradford", "Leicester"]
+      - code: "US"
+        weight: 0.03
+        cities: ["New York", "Los Angeles", "Detroit", "Chicago", "Boston"]
+      - code: "CA"
+        weight: 0.02
         cities: ["Toronto", "Montreal", "Vancouver", "Calgary", "Ottawa"]
       - code: "AU"
-        weight: 0.05
+        weight: 0.01
         cities: ["Sydney", "Melbourne", "Brisbane", "Perth", "Adelaide"]
 
 genres:
-  - Action
-  - Comedy
   - Drama
-  - Thriller
   - Romance
-  - Sci-Fi
-  - Horror
+  - Comedy
+  - Family
+  - Social
+  - Historical
+  - Musical
+  - Folk
+  - Action
+  - Thriller
+  - Biography
   - Documentary
-  - Animation
-  - Crime
-  - Fantasy
-  - Mystery
+  - Cultural
+  - Traditional
+  - Contemporary
+  - Political
+  - Liberation War
+  - Village Life
+  - Urban Life
+  - Religious
 
 api:
   harbor_url: "http://localhost:8081"
@@ -75,6 +89,20 @@ rabbitmq:
   watch_history_queue: "watchhi-story"
   content_item_queue: "content_item"
   series_item_queue: "series_item"
+
+clickhouse:
+  host: "localhost"
+  port: 9000
+  database: "playtracker"
+  username: "default"
+  password: "clickhome"
+  batch_size: 10000
+  max_open_conns: 10
+  max_idle_conns: 5
+  conn_max_lifetime_minutes: 60
+  tables:
+    content_items: "content_items"
+    watch_history: "watch_history"
 
 output:
   content_dir: "data/content"

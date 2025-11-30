@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/shahariaz/playtracker-simulator/internal/clickhouse"
 	"github.com/shahariaz/playtracker-simulator/internal/config"
 	"github.com/shahariaz/playtracker-simulator/internal/generators"
 	"github.com/shahariaz/playtracker-simulator/internal/loader"
@@ -60,12 +61,14 @@ Generate Options:
   --config          Path to config file (default: config/config.yaml)
 
 Load Options:
-  --content         Load content to Harbor API or RabbitMQ
-  --watch-history   Load watch history to Harbor API or RabbitMQ
+  --content         Load content to Harbor API, RabbitMQ, or ClickHouse
+  --watch-history   Load watch history to Harbor API, RabbitMQ, or ClickHouse
   --start-batch     Start batch number (for watch history)
   --end-batch       End batch number (for watch history)
-  --use-queue       Use RabbitMQ queues instead of API
+  --use-queue       Use RabbitMQ queues
   --use-api         Use Harbor API (default)
+  --use-clickhouse  Use ClickHouse database
+  --create-tables   Create ClickHouse tables (use with --use-clickhouse)
   --config          Path to config file (default: config/config.yaml)
 
 Examples:
@@ -75,7 +78,9 @@ Examples:
   simulator generate --watch-history --start-batch=1 --end-batch=10
   simulator load --content --use-api
   simulator load --content --use-queue
+  simulator load --content --use-clickhouse --create-tables
   simulator load --watch-history --start-batch=1 --end-batch=10 --use-queue
+  simulator load --watch-history --start-batch=1 --end-batch=10 --use-clickhouse
   simulator stats`)
 }
 
@@ -120,12 +125,14 @@ func handleGenerate(args []string) {
 
 func handleLoad(args []string) {
 	fs := flag.NewFlagSet("load", flag.ExitOnError)
-	content := fs.Bool("content", false, "Load content to API or Queue")
-	watchHistory := fs.Bool("watch-history", false, "Load watch history to API or Queue")
+	content := fs.Bool("content", false, "Load content to API, Queue, or ClickHouse")
+	watchHistory := fs.Bool("watch-history", false, "Load watch history to API, Queue, or ClickHouse")
 	startBatch := fs.Int("start-batch", 1, "Start batch number")
 	endBatch := fs.Int("end-batch", 1, "End batch number")
 	useQueue := fs.Bool("use-queue", false, "Use RabbitMQ queues")
 	useAPI := fs.Bool("use-api", false, "Use Harbor API")
+	useClickHouse := fs.Bool("use-clickhouse", false, "Use ClickHouse database")
+	createTables := fs.Bool("create-tables", false, "Create ClickHouse tables (use with --use-clickhouse)")
 	configPath := fs.String("config", "config/config.yaml", "Path to config file")
 
 	if err := fs.Parse(args); err != nil {
@@ -141,19 +148,40 @@ func handleLoad(args []string) {
 
 	startTime := time.Now()
 
-	// Default to API if neither flag is set
-	if !*useQueue && !*useAPI {
+	// Default to API if no specific target is set
+	if !*useQueue && !*useAPI && !*useClickHouse {
 		*useAPI = true
 	}
 
+	// Validate that only one target is selected
+	selectedTargets := 0
+	if *useAPI {
+		selectedTargets++
+	}
+	if *useQueue {
+		selectedTargets++
+	}
+	if *useClickHouse {
+		selectedTargets++
+	}
+
+	if selectedTargets > 1 {
+		fmt.Println("Please specify only one target: --use-api, --use-queue, or --use-clickhouse")
+		os.Exit(1)
+	}
+
 	if *content {
-		if *useQueue {
+		if *useClickHouse {
+			loadContentToClickHouse(cfg, *createTables)
+		} else if *useQueue {
 			loadContentToQueue(cfg)
 		} else {
 			loadContent(cfg)
 		}
 	} else if *watchHistory {
-		if *useQueue {
+		if *useClickHouse {
+			loadWatchHistoryToClickHouse(cfg, *startBatch, *endBatch, *createTables)
+		} else if *useQueue {
 			loadWatchHistoryToQueue(cfg, *startBatch, *endBatch)
 		} else {
 			loadWatchHistory(cfg, *startBatch, *endBatch)
@@ -495,4 +523,113 @@ func loadWatchHistoryToQueue(cfg *config.Config, startBatch, endBatch int) {
 		}
 		stats.Print()
 	}
+}
+
+func loadContentToClickHouse(cfg *config.Config, createTables bool) {
+	fmt.Println("=== Loading Content to ClickHouse ===")
+
+	client, err := clickhouse.NewClient(cfg)
+	if err != nil {
+		fmt.Printf("Error connecting to ClickHouse: %v\n", err)
+		os.Exit(1)
+	}
+	defer client.Close()
+
+	// Check ClickHouse health
+	fmt.Printf("Checking ClickHouse connection at %s:%d...\n", cfg.ClickHouse.Host, cfg.ClickHouse.Port)
+	if err := client.HealthCheck(); err != nil {
+		fmt.Printf("Error: ClickHouse health check failed: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("ClickHouse connection OK")
+
+	// Create tables if requested
+	if createTables {
+		fmt.Println("Creating ClickHouse tables...")
+		if err := client.CreateTables(); err != nil {
+			fmt.Printf("Error creating tables: %v\n", err)
+			os.Exit(1)
+		}
+	}
+
+	// Load movies
+	moviesPath := filepath.Join(cfg.Output.ContentDir, "movies.json")
+	var movies []models.ContentItem
+	if err := utils.LoadJSON(moviesPath, &movies); err != nil {
+		fmt.Printf("Error loading movies: %v\n", err)
+		os.Exit(1)
+	}
+
+	stats, err := client.InsertContentItems(movies)
+	if err != nil {
+		fmt.Printf("Error inserting movies: %v\n", err)
+	}
+	stats.Print()
+
+	// Load episodes (convert from SeriesItem to ContentItem)
+	episodesPath := filepath.Join(cfg.Output.ContentDir, "episodes.json")
+	var episodes []models.SeriesItem
+	if err := utils.LoadJSON(episodesPath, &episodes); err != nil {
+		fmt.Printf("Error loading episodes: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Convert episodes to content items
+	contentItems := make([]models.ContentItem, len(episodes))
+	for i, ep := range episodes {
+		contentItems[i] = ep.ContentItem
+	}
+
+	stats, err = client.InsertContentItems(contentItems)
+	if err != nil {
+		fmt.Printf("Error inserting episodes: %v\n", err)
+	}
+	stats.Print()
+
+	// Show table statistics
+	client.ShowTableStats()
+}
+
+func loadWatchHistoryToClickHouse(cfg *config.Config, startBatch, endBatch int, createTables bool) {
+	fmt.Printf("=== Loading Watch History to ClickHouse (batches %d-%d) ===\n", startBatch, endBatch)
+
+	client, err := clickhouse.NewClient(cfg)
+	if err != nil {
+		fmt.Printf("Error connecting to ClickHouse: %v\n", err)
+		os.Exit(1)
+	}
+	defer client.Close()
+
+	// Check ClickHouse health
+	fmt.Printf("Checking ClickHouse connection at %s:%d...\n", cfg.ClickHouse.Host, cfg.ClickHouse.Port)
+	if err := client.HealthCheck(); err != nil {
+		fmt.Printf("Error: ClickHouse health check failed: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("ClickHouse connection OK")
+
+	// Create tables if requested
+	if createTables {
+		fmt.Println("Creating ClickHouse tables...")
+		if err := client.CreateTables(); err != nil {
+			fmt.Printf("Error creating tables: %v\n", err)
+			os.Exit(1)
+		}
+	}
+
+	for batch := startBatch; batch <= endBatch; batch++ {
+		batchPath := fmt.Sprintf("%s/watch_history_batch_%06d.json", cfg.Output.WatchHistoryDir, batch)
+
+		fmt.Printf("\nInserting batch %d from %s...\n", batch, batchPath)
+
+		stats, err := client.InsertWatchHistoryBatch(batchPath)
+		if err != nil {
+			fmt.Printf("Error inserting batch %d: %v\n", batch, err)
+			continue
+		}
+		stats.Print()
+	}
+
+	// Show table statistics
+	client.ShowTableStats()
 }

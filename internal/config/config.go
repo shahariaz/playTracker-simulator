@@ -15,6 +15,7 @@ type Config struct {
 	Genres     []string         `yaml:"genres"`
 	API        APIConfig        `yaml:"api"`
 	RabbitMQ   RabbitMQConfig   `yaml:"rabbitmq"`
+	ClickHouse ClickHouseConfig `yaml:"clickhouse"`
 	Output     OutputConfig     `yaml:"output"`
 }
 
@@ -108,6 +109,26 @@ type RabbitMQConfig struct {
 	SeriesItemQueue   string `yaml:"series_item_queue"`
 }
 
+// ClickHouseConfig holds ClickHouse configuration
+type ClickHouseConfig struct {
+	Host                   string                 `yaml:"host"`
+	Port                   int                    `yaml:"port"`
+	Database               string                 `yaml:"database"`
+	Username               string                 `yaml:"username"`
+	Password               string                 `yaml:"password"`
+	BatchSize              int                    `yaml:"batch_size"`
+	MaxOpenConns           int                    `yaml:"max_open_conns"`
+	MaxIdleConns           int                    `yaml:"max_idle_conns"`
+	ConnMaxLifetimeMinutes int                    `yaml:"conn_max_lifetime_minutes"`
+	Tables                 ClickHouseTablesConfig `yaml:"tables"`
+}
+
+// ClickHouseTablesConfig holds table names configuration
+type ClickHouseTablesConfig struct {
+	ContentItems string `yaml:"content_items"`
+	WatchHistory string `yaml:"watch_history"`
+}
+
 // LoadConfig loads configuration from a YAML file
 func LoadConfig(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
@@ -190,6 +211,21 @@ func GetDefaultConfig() *Config {
 			WatchHistoryQueue: "watch_history_queue",
 			ContentItemQueue:  "content_item_queue",
 			SeriesItemQueue:   "series_item_queue",
+		},
+		ClickHouse: ClickHouseConfig{
+			Host:                   "localhost",
+			Port:                   9000,
+			Database:               "playtracker",
+			Username:               "default",
+			Password:               "",
+			BatchSize:              10000,
+			MaxOpenConns:           10,
+			MaxIdleConns:           5,
+			ConnMaxLifetimeMinutes: 60,
+			Tables: ClickHouseTablesConfig{
+				ContentItems: "content_items",
+				WatchHistory: "watch_history",
+			},
 		},
 		Output: OutputConfig{
 			ContentDir:      "data/content",

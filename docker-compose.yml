@@ -1,0 +1,39 @@
+version: "3.9"
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: winch_redis
+    restart: always
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: winch_rabbitmq
+    restart: always
+    ports:
+      - "5672:5672"   # AMQP
+      - "15672:15672" # RabbitMQ dashboard
+    environment:
+      RABBITMQ_DEFAULT_USER: "guest"     # hardcoded
+      RABBITMQ_DEFAULT_PASS: "guest"     # hardcoded
+      RABBITMQ_DEFAULT_VHOST: "/"
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: winch_clickhouse
+    restart: always
+    ports:
+      - "9000:9000"   # Native protocol
+      - "8123:8123"   # HTTP interface
+    environment:
+      CLICKHOUSE_DB: "default"
+      CLICKHOUSE_USER: "default"
+      CLICKHOUSE_PASSWORD: "clickhome"   # hardcoded
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+
+volumes:
+  clickhouse_data:

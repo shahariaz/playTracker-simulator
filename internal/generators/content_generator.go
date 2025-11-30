@@ -182,38 +182,58 @@ func (g *ContentGenerator) generateSeries(seriesID uint64, episodeID *uint64) (m
 
 // generateMovieTitle generates a realistic movie title
 func (g *ContentGenerator) generateMovieTitle() string {
+	// Famous Bangladeshi movie titles
+	bangladeshiMovies := []string{
+		"Padma Nadir Majhi", "Matir Moina", "Guerrilla", "Doob", "Aynabaji", "Dhaka Attack",
+		"Purno Doirgho Prem Kahini", "Monpura", "Third Person Singular Number", "Television",
+		"Oggatonama", "Chorabali", "Runway", "Debi", "Shankhachil", "Hawa", "Poran", "Priyotoma",
+		"Local Bus", "Networker Baire", "Made in Bangladesh", "Bhuban Majhi", "Komola Rocket",
+		"Meghmallar", "Fagun Haway", "Noya Manush", "Shopner Ghor", "Chitra Nodir Pare",
+	}
+	
 	patterns := []func() string{
-		func() string { return "The " + g.faker.Noun() },
-		func() string { return g.faker.Noun() + " of " + g.faker.Noun() },
-		func() string { return g.faker.Adjective() + " " + g.faker.Noun() },
-		func() string { return "The " + g.faker.Adjective() + " " + g.faker.Noun() },
-		func() string { return g.faker.Verb() + "ing " + g.faker.Noun() },
-		func() string { return g.faker.LastName() + "'s " + g.faker.Noun() },
-		func() string { return g.faker.City() },
-		func() string { return fmt.Sprintf("%d: %s", g.faker.Number(1, 9999), g.faker.Noun()) },
+		// Use predefined Bangladeshi titles (70% chance)
+		func() string { return bangladeshiMovies[utils.RandomInt(0, len(bangladeshiMovies)-1)] },
+		func() string { return bangladeshiMovies[utils.RandomInt(0, len(bangladeshiMovies)-1)] },
+		func() string { return bangladeshiMovies[utils.RandomInt(0, len(bangladeshiMovies)-1)] },
+		// Generate Bangladeshi-style titles (30% chance)
+		func() string { return "Ekti " + g.faker.Noun() + " Golpo" },
+		func() string { return g.faker.LastName() + "er Bhalobasha" },
+		func() string { return "Shopner " + g.faker.Noun() },
+		func() string { return g.faker.Noun() + " Express" },
 	}
 
 	pattern := patterns[utils.RandomInt(0, len(patterns)-1)]
 	title := pattern()
-	return strings.Title(title)
+	return title
 }
 
 // generateSeriesTitle generates a realistic series title
 func (g *ContentGenerator) generateSeriesTitle() string {
+	// Famous Bangladeshi TV series and dramas
+	bangladeshiSeries := []string{
+		"Bohubrihi", "Kothao Keu Nei", "Ayomoy", "Shokal Shondha", "Shopner Thikana",
+		"Ronger Manush", "Ek Akasher Niche", "Nondito Noroke", "Pathor Somoy", "Shobuj Nokkhotro",
+		"Baker Bhai", "Tumi Ashbe Bole", "Dhurdhorsho", "Ityadi", "Hanif Shongket", "Taroka Kathon",
+		"Khude Gaanraaj", "Shera Kontho", "Bangladesh Idol", "Mohanagar", "Networker Baire",
+		"Kaalpurush", "Karagar", "Mission Huntdown", "Bhalobasha 101", "Shesher Kobita",
+	}
+	
 	patterns := []func() string{
-		func() string { return "The " + g.faker.Noun() + "s" },
-		func() string { return g.faker.City() },
-		func() string { return g.faker.Adjective() + " " + g.faker.Noun() },
-		func() string { return g.faker.LastName() },
-		func() string { return g.faker.Noun() + " Story" },
-		func() string { return "Breaking " + g.faker.Noun() },
-		func() string { return g.faker.Noun() + " & " + g.faker.Noun() },
-		func() string { return "The " + g.faker.Adjective() + " Files" },
+		// Use predefined Bangladeshi series titles (70% chance)
+		func() string { return bangladeshiSeries[utils.RandomInt(0, len(bangladeshiSeries)-1)] },
+		func() string { return bangladeshiSeries[utils.RandomInt(0, len(bangladeshiSeries)-1)] },
+		func() string { return bangladeshiSeries[utils.RandomInt(0, len(bangladeshiSeries)-1)] },
+		// Generate Bangladeshi-style series titles (30% chance)
+		func() string { return g.faker.Noun() + " Kahini" },
+		func() string { return "Bangladesher " + g.faker.Noun() },
+		func() string { return g.faker.LastName() + " Poribar" },
+		func() string { return "Dhaka " + g.faker.Noun() },
 	}
 
 	pattern := patterns[utils.RandomInt(0, len(patterns)-1)]
 	title := pattern()
-	return strings.Title(title)
+	return title
 }
 
 // randomGenres returns random genres from config
@@ -223,8 +243,8 @@ func (g *ContentGenerator) randomGenres(count int) []string {
 
 // randomLanguage returns a random language
 func (g *ContentGenerator) randomLanguage() string {
-	languages := []string{"English", "Spanish", "French", "German", "Hindi", "Japanese", "Korean", "Chinese", "Portuguese", "Italian"}
-	weights := []float64{0.50, 0.10, 0.08, 0.07, 0.08, 0.05, 0.05, 0.03, 0.02, 0.02}
+	languages := []string{"Bengali", "Hindi", "Urdu", "English", "Arabic", "Chakma", "Marma", "Garo", "Manipuri", "Santal"}
+	weights := []float64{0.70, 0.12, 0.08, 0.05, 0.02, 0.01, 0.01, 0.005, 0.003, 0.002}
 	return languages[utils.WeightedRandomSelect(weights)]
 }
 
@@ -235,25 +255,37 @@ func (g *ContentGenerator) randomContentAccess() string {
 	return accessTypes[utils.WeightedRandomSelect(weights)]
 }
 
-// generateMetas generates random metadata (legacy - returns string)
+// generateMetas generates random metadata as string
 func (g *ContentGenerator) generateMetas() string {
 	metas := []string{}
 
-	// Add directors
-	metas = append(metas, fmt.Sprintf("director:%s", g.faker.Name()))
+	// Bangladeshi directors
+	bangladeshiDirectors := []string{
+		"Tareque Masud", "Tanvir Mokammel", "Humayun Ahmed", "Chashi Nazrul Islam",
+		"Alamgir Kabir", "Subhash Dutta", "Amjad Hossain", "Mostafa Sarwar Farooki",
+		"Mostofa Sarwar Farooki", "Abu Sayeed", "Tauquir Ahmed", "Gias Uddin Selim",
+	}
+	metas = append(metas, fmt.Sprintf("director:%s", bangladeshiDirectors[utils.RandomInt(0, len(bangladeshiDirectors)-1)]))
 
-	// Add cast members
+	// Add Bangladeshi cast members
+	bangladeshiActors := []string{
+		"Shakib Khan", "Jaya Ahsan", "Chanchal Chowdhury", "Mosharraf Karim", "Apu Biswas",
+		"Riaz", "Purnima", "Ferdous Ahmed", "Shabnur", "Bappy Chowdhury", "Mahiya Mahi",
+		"Ananta Jalil", "Barsha", "Omar Sani", "Mousumi", "Afzal Hossain", "Suborna Mustafa",
+		"Tariq Anam Khan", "Fazlur Rahman Babu", "Humayun Faridi", "ATM Shamsuzzaman",
+	}
 	castCount := utils.RandomInt(2, 5)
 	for i := 0; i < castCount; i++ {
-		metas = append(metas, fmt.Sprintf("cast:%s", g.faker.Name()))
+		actorName := bangladeshiActors[utils.RandomInt(0, len(bangladeshiActors)-1)]
+		metas = append(metas, fmt.Sprintf("cast:%s", actorName))
 	}
 
-	// Add provider
-	providers := []string{"Netflix", "Amazon", "Hulu", "Disney+", "HBO Max", "Apple TV+", "Paramount+"}
+	// Add Bangladesh-focused streaming providers
+	providers := []string{"Chorki", "Hoichoi", "Bongo BD", "iflix", "Bioscope", "Netflix", "Amazon Prime", "YouTube", "Facebook Watch", "Robi TV"}
 	metas = append(metas, fmt.Sprintf("provider:%s", providers[utils.RandomInt(0, len(providers)-1)]))
 
-	// Add rating
-	ratings := []string{"G", "PG", "PG-13", "R", "NC-17", "TV-MA", "TV-14", "TV-PG"}
+	// Add Bangladeshi film rating system
+	ratings := []string{"U", "UA", "A", "S", "Family", "Adult", "General", "Restricted"}
 	metas = append(metas, fmt.Sprintf("rating:%s", ratings[utils.RandomInt(0, len(ratings)-1)]))
 
 	return strings.Join(metas, ";")
@@ -263,21 +295,32 @@ func (g *ContentGenerator) generateMetas() string {
 func (g *ContentGenerator) generateMetasArray() []string {
 	metas := []string{}
 
-	// Add directors
-	metas = append(metas, fmt.Sprintf("director:%s", g.faker.Name()))
+	// Bangladeshi TV directors and producers
+	bangladeshiTVDirectors := []string{
+		"Humayun Ahmed", "Tauquir Ahmed", "Salahuddin Lavlu", "Chayanika Chowdhury",
+		"Redoan Rony", "Mizanur Rahman Aryan", "Shihab Shaheen", "Vicky Zahed",
+	}
+	metas = append(metas, fmt.Sprintf("director:%s", bangladeshiTVDirectors[utils.RandomInt(0, len(bangladeshiTVDirectors)-1)]))
 
-	// Add cast members
+	// Add Bangladeshi TV cast members
+	bangladeshiTVActors := []string{
+		"Chanchal Chowdhury", "Mosharraf Karim", "Tariq Anam Khan", "Fazlur Rahman Babu",
+		"Afzal Hossain", "Suborna Mustafa", "Shamim Ara Nipa", "Jayanta Chattopadhyay",
+		"Dilara Zaman", "Ziaul Faruq Apurba", "Mehazabien Chowdhury", "Nusrat Imrose Tisha",
+		"Tahsan Rahman Khan", "Sabila Nur", "Siam Ahmed", "Tanjin Tisha",
+	}
 	castCount := utils.RandomInt(2, 5)
 	for i := 0; i < castCount; i++ {
-		metas = append(metas, fmt.Sprintf("cast:%s", g.faker.Name()))
+		actorName := bangladeshiTVActors[utils.RandomInt(0, len(bangladeshiTVActors)-1)]
+		metas = append(metas, fmt.Sprintf("cast:%s", actorName))
 	}
 
-	// Add provider
-	providers := []string{"Netflix", "Amazon", "Hulu", "Disney+", "HBO Max", "Apple TV+", "Paramount+"}
+	// Add Bangladesh-focused streaming and TV platforms
+	providers := []string{"Chorki", "Hoichoi", "Bongo BD", "BTV", "Channel i", "ATN Bangla", "Maasranga TV", "Somoy TV", "RTV", "NTV"}
 	metas = append(metas, fmt.Sprintf("provider:%s", providers[utils.RandomInt(0, len(providers)-1)]))
 
-	// Add rating
-	ratings := []string{"G", "PG", "PG-13", "R", "NC-17", "TV-MA", "TV-14", "TV-PG"}
+	// Add Bangladeshi TV rating system
+	ratings := []string{"Family", "General", "Adult", "Teen", "All Ages", "Mature", "Restricted"}
 	metas = append(metas, fmt.Sprintf("rating:%s", ratings[utils.RandomInt(0, len(ratings)-1)]))
 
 	return metas
